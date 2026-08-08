@@ -1,0 +1,90 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jadenmachado1234
+
+//@version=6
+strategy( "CBE-v1 | Candle Body Exhaustion",
+     overlay           = true,
+     initial_capital   = 1000000,
+     default_qty_type  = strategy.fixed,
+     default_qty_value = 2,
+     commission_type   = strategy.commission.cash_per_contract,
+     commission_value  = 2.5,
+     slippage          = 2
+     )
+
+
+// ── INPUTS ──────────────────────────────────────────────────
+minBodySize = input.float(0.1, 'Minimum Body Size (× ATR)', step = 0.1, minval = 0.1, group = 'CANDLE TA')
+seqLen      = input.int(3,    'Sequence Length',            step = 1,   minval = 2, maxval = 6, group = 'CANDLE TA')
+
+atrLen  = input.int(14,  'ATR Length',          step = 1,   minval = 1,  group = 'ATR')
+atrSL   = input.float(1.7, 'Stop Loss (× ATR)', step = 0.1, minval = 0.1, group = 'ATR')
+atrTP   = input.float(2.5, 'Take Profit (× ATR)',step = 0.1, minval = 0.1, group = 'ATR')
+
+
+// ── INDICATORS ──────────────────────────────────────────────
+atr = ta.atr(atrLen)
+
+
+// ── CONDITIONS ──────────────────────────────────────────────
+
+// Bearish bodies — open - close (positive on bearish candles)
+lBody1 = open[seqLen]     - close[seqLen]
+lBody2 = open[seqLen - 1] - close[seqLen - 1]
+lBody3 = open[seqLen - 2] - close[seqLen - 2]
+
+// Bullish bodies — close - open (positive on bullish candles)
+sBody1 = close[seqLen]     - open[seqLen]
+sBody2 = close[seqLen - 1] - open[seqLen - 1]
+sBody3 = close[seqLen - 2] - open[seqLen - 2]
+
+// Direction checks
+bearish1 = close[seqLen]     < open[seqLen]
+bearish2 = close[seqLen - 1] < open[seqLen - 1]
+bearish3 = close[seqLen - 2] < open[seqLen - 2]
+
+bullish1 = close[seqLen]     > open[seqLen]
+bullish2 = close[seqLen - 1] > open[seqLen - 1]
+bullish3 = close[seqLen - 2] > open[seqLen - 2]
+
+// First candle minimum body size gate
+firstCandleLong  = lBody1 >= atr * minBodySize
+firstCandleShort = sBody1 >= atr * minBodySize
+
+// Long: bearish sequence shrinking → fade down move
+longCondition = bearish1 and bearish2 and bearish3 and
+                lBody1 >= lBody2 and lBody2 >= lBody3 and
+                firstCandleLong
+
+// Short: bullish sequence shrinking → fade up move
+shortCondition = bullish1 and bullish2 and bullish3 and
+                 sBody1 >= sBody2 and sBody2 >= sBody3 and
+                 firstCandleShort
+
+
+// ── ENTRIES ─────────────────────────────────────────────────
+if longCondition and strategy.position_size == 0
+    strategy.entry('LONG', strategy.long)
+
+if shortCondition and strategy.position_size == 0
+    strategy.entry('SHORT', strategy.short)
+
+
+// ── EXITS ───────────────────────────────────────────────────
+longSL  = strategy.position_avg_price - atr * atrSL
+longTP  = strategy.position_avg_price + atr * atrTP
+shortSL = strategy.position_avg_price + atr * atrSL
+shortTP = strategy.position_avg_price - atr * atrTP
+
+strategy.exit('long exit',  'LONG',  limit = longTP,  stop = longSL)
+strategy.exit('short exit', 'SHORT', limit = shortTP, stop = shortSL)
+
+
+// ── PLOTS ───────────────────────────────────────────────────
+plotshape(longCondition,  location = location.belowbar, style = shape.triangleup,   color = color.new(color.teal,   15), size = size.small, text = "BE↑")
+plotshape(shortCondition, location = location.abovebar, style = shape.triangledown, color = color.new(color.orange, 15), size = size.small, text = "BE↓")
+
+plot(strategy.position_size > 0 ? longSL  : na, 'Long SL',  color = color.red,   style = plot.style_linebr, linewidth = 1)
+plot(strategy.position_size > 0 ? longTP  : na, 'Long TP',  color = color.green, style = plot.style_linebr, linewidth = 1)
+plot(strategy.position_size < 0 ? shortSL : na, 'Short SL', color = color.red,   style = plot.style_linebr, linewidth = 1)
+plot(strategy.position_size < 0 ? shortTP : na, 'Short TP', color = color.green, style = plot.style_linebr, linewidth = 1)

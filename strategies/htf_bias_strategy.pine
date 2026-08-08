@@ -1,0 +1,92 @@
+//@version=5
+strategy("4H Bias + 15m Breakout",
+     overlay                = true,
+     default_qty_type       = strategy.percent_of_equity,
+     default_qty_value      = 1,
+     commission_type        = strategy.commission.percent,
+     commission_value       = 0.05,
+     slippage               = 2,
+     initial_capital        = 100000)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────────────────────────────────────
+atr_mult_sl  = input.float(1.5, "ATR SL Multiplier",  minval=0.5, step=0.1, tooltip="SL = ATR(14) x this value below/above entry.")
+atr_mult_tp  = input.float(3.0, "ATR TP Multiplier",  minval=0.5, step=0.1, tooltip="TP = ATR(14) x this value above/below entry. Default is 2R.")
+session_start = input.string("0930", "Session Start (NY)", tooltip="Format: HHMM. Trades only allowed after this time.")
+session_end   = input.string("1200", "Session End (NY)",   tooltip="Format: HHMM. No new entries after this time.")
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4H BIAS — previous 4H candle high/low
+// lookahead_off = no repaint, value updates only on 4H candle close
+// ─────────────────────────────────────────────────────────────────────────────
+h4_high_prev = request.security(syminfo.tickerid, "240", high[1],  barmerge.gaps_off, barmerge.lookahead_off)
+h4_low_prev  = request.security(syminfo.tickerid, "240", low[1],   barmerge.gaps_off, barmerge.lookahead_off)
+h4_close     = request.security(syminfo.tickerid, "240", close[1], barmerge.gaps_off, barmerge.lookahead_off)
+
+// Bias: 4H close broke above prev 4H high → bullish, below prev 4H low → bearish
+h4_bull = h4_close > h4_high_prev
+h4_bear = h4_close < h4_low_prev
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SESSION FILTER (NY time)
+// ─────────────────────────────────────────────────────────────────────────────
+sessionStr  = session_start + "-" + session_end
+inSession   = not na(time(timeframe.period, sessionStr, "America/New_York"))
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 15M ENTRY SIGNAL — previous candle high/low breakout (confirmed on close)
+// ─────────────────────────────────────────────────────────────────────────────
+prev15_high = high[1]
+prev15_low  = low[1]
+
+// Close above prev 15m high = bullish break; close below prev 15m low = bearish break
+broke_high = close > prev15_high
+broke_low  = close < prev15_low
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COMBINED CONDITIONS
+// ─────────────────────────────────────────────────────────────────────────────
+long_condition  = inSession and h4_bull and broke_high and strategy.position_size == 0
+short_condition = inSession and h4_bear and broke_low  and strategy.position_size == 0
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RISK — ATR-based SL/TP
+// ─────────────────────────────────────────────────────────────────────────────
+atr       = ta.atr(14)
+sl_dist   = atr * atr_mult_sl
+tp_dist   = atr * atr_mult_tp
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENTRIES & EXITS
+// ─────────────────────────────────────────────────────────────────────────────
+if long_condition
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Long Exit", "Long",
+         stop  = close - sl_dist,
+         limit = close + tp_dist)
+
+if short_condition
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Short Exit", "Short",
+         stop  = close + sl_dist,
+         limit = close - tp_dist)
+
+// Close any open trade at session end
+if not inSession and strategy.position_size != 0
+    strategy.close_all(comment="Session End")
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PLOTS
+// ─────────────────────────────────────────────────────────────────────────────
+// 4H bias background
+bgcolor(h4_bull ? color.new(color.green, 93) : na, title="4H Bullish Bias")
+bgcolor(h4_bear ? color.new(color.red,   93) : na, title="4H Bearish Bias")
+
+// Previous 15m high/low reference levels
+plot(prev15_high, "Prev 15m High", color=color.new(color.aqua,  50), linewidth=1, style=plot.style_circles)
+plot(prev15_low,  "Prev 15m Low",  color=color.new(color.orange,50), linewidth=1, style=plot.style_circles)
+
+// Entry signals
+plotshape(long_condition,  title="Long Signal",  style=shape.triangleup,   location=location.belowbar, color=color.green, size=size.small)
+plotshape(short_condition, title="Short Signal", style=shape.triangledown, location=location.abovebar, color=color.red,   size=size.small)

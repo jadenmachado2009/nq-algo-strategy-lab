@@ -1,0 +1,460 @@
+//@version=5
+// =====================================================================
+//  9:30 PATTY SWING — Open Manipulation Reversal
+//  Mechanical translation of the "94% win rate" strategy from
+//  PB Trading, "How I Achieved A 94% Win Rate (NEW STRATEGY)" (Jul 2026)
+//
+//  Core sequence the script encodes:
+//    1. Pre-market accumulation (compressed range) before the open
+//    2. HTF bias (1H + 4H) gives the direction you are allowed to take
+//    3. 09:30 manipulation sweeps a key level against that bias
+//    4. The manipulation leg must be CLEAN + FAST (structure filters)
+//    5. Entry = inversion of a lower-timeframe FVG with displacement
+//    6. Stop = beyond the ENTIRE manipulation leg
+//    7. Target = fixed R or nearest unfilled 5m/15m gap
+//    8. Break even once price pays you the first half-R
+//
+//  Run on a 1-minute chart (30s if your plan allows). NQ1! / MNQ1!.
+//  Read the README before trusting any Strategy Tester number.
+// =====================================================================
+
+strategy("9:30 Patty Swing — Open Manipulation Reversal",
+     overlay              = true,
+     initial_capital      = 50000,
+     default_qty_type     = strategy.fixed,
+     default_qty_value    = 1,
+     commission_type      = strategy.commission.cash_per_contract,
+     commission_value     = 2.50,
+     slippage             = 2,
+     calc_on_every_tick   = false,
+     process_orders_on_close = true,
+     max_bars_back        = 1000,
+     pyramiding           = 0)
+
+// =====================================================================
+//  INPUTS
+// =====================================================================
+
+gSes = "1 · Session (exchange timezone)"
+tzIn      = input.string("America/New_York", "Timezone",                       group = gSes)
+pmSes     = input.session("0900-0930",       "Pre-market accumulation window", group = gSes)
+entrySes  = input.session("0930-0950",       "Entry window",                   group = gSes)
+flatSes   = input.session("1055-1100",       "Force-flat window",              group = gSes)
+maxTrades = input.int(1, "Max trades per day", minval = 1, maxval = 5,         group = gSes)
+
+gBias = "2 · Higher-timeframe bias / narrative"
+htfA        = input.timeframe("60",  "Primary bias TF",                        group = gBias)
+htfB        = input.timeframe("240", "Confirmation bias TF",                   group = gBias)
+biasLen     = input.int(21, "Bias EMA length", minval = 5,                     group = gBias)
+requireBoth = input.bool(true,  "Require BOTH bias TFs to agree",              group = gBias)
+tradeWith   = input.string("With HTF bias only", "Direction permission",
+     options = ["With HTF bias only", "Both directions"],                      group = gBias)
+
+gKey = "3 · Manipulation / key level"
+usePmSweep  = input.bool(true, "Key level: sweep of pre-market range",         group = gKey)
+usePdSweep  = input.bool(true, "Key level: sweep of prior-day high/low",       group = gKey)
+pmMaxRange  = input.float(0.40, "Max pre-market range (× daily ATR)",
+     minval = 0.05, maxval = 2.0, step = 0.05,                                 group = gKey,
+     tooltip = "Accumulation must be COMPRESSED. Higher = looser.")
+
+gStruct = "4 · Structure filters (the 'clean leg' proxy)"
+minLegAtr    = input.float(1.20, "Min leg size (× ATR14)",  minval = 0.1, step = 0.1, group = gStruct)
+maxLegBars   = input.int(15,   "Max bars in manipulation leg", minval = 2,     group = gStruct)
+minLegBars   = input.int(2,    "Min bars in manipulation leg", minval = 1,     group = gStruct)
+minEff       = input.float(0.38, "Min leg efficiency (0-1)", minval = 0.05, maxval = 1.0, step = 0.01,
+     group = gStruct, tooltip = "netLegRange / sum(bar ranges). Low = choppy/wicky. This is the 'clean structure' proxy.")
+maxFvgInLeg  = input.int(3,    "Max FVGs inside the leg",  minval = 0,         group = gStruct,
+     tooltip = "He explicitly rejects legs with 'a thousand fair value gaps'.")
+minAtrPts    = input.float(3.0, "Volatility floor: min ATR14 (points)", minval = 0.0, step = 0.5, group = gStruct)
+
+gEntry = "5 · Entry trigger (LTF FVG inversion + displacement)"
+dispAtrMult  = input.float(0.80, "Min displacement body (× ATR14)", minval = 0.1, step = 0.05, group = gEntry)
+minBodyRatio = input.float(0.55, "Min body / range of trigger candle", minval = 0.1, maxval = 1.0, step = 0.05, group = gEntry)
+confirmBars  = input.int(1, "Closes required beyond the inverted FVG", minval = 1, maxval = 3, group = gEntry,
+     tooltip = "He often 'waits one extra candle for conviction'. 2 = stricter, fewer trades.")
+
+gRisk = "6 · Risk / exits"
+stopBufTicks = input.int(4, "Stop buffer beyond the leg (ticks)", minval = 0,  group = gRisk)
+tpMode       = input.string("Fixed R", "Target mode",
+     options = ["Fixed R", "Nearest gap (with R floor)"],                      group = gRisk)
+rrTarget     = input.float(1.0, "Fixed R multiple", minval = 0.3, step = 0.1,  group = gRisk)
+minRR        = input.float(1.0, "Minimum R floor for gap targets", minval = 0.3, step = 0.1, group = gRisk)
+gapTF        = input.timeframe("5", "Target-gap timeframe",                    group = gRisk)
+beAtR        = input.float(0.5, "Move to break-even at (R)", minval = 0.1, step = 0.1, group = gRisk)
+beOffTicks   = input.int(2, "Break-even offset (ticks in profit)", minval = 0, group = gRisk)
+maxBarsTrade = input.int(30, "Time stop (bars in trade)", minval = 3,          group = gRisk)
+maxRiskPts   = input.float(60.0, "Reject setup if risk > (points)", minval = 1, step = 1, group = gRisk)
+
+gViz = "7 · Visuals"
+showLevels = input.bool(true, "Draw pre-market range & levels",                group = gViz)
+showZones  = input.bool(true, "Shade entry window",                            group = gViz)
+
+// =====================================================================
+//  BASE SERIES
+// =====================================================================
+
+atr    = ta.atr(14)
+tick   = syminfo.mintick
+
+inPM    = not na(time(timeframe.period, pmSes,    tzIn))
+inEntry = not na(time(timeframe.period, entrySes, tzIn))
+inFlat  = not na(time(timeframe.period, flatSes,  tzIn))
+
+newDay  = ta.change(time("D")) != 0
+
+// ---- HTF bias --------------------------------------------------------
+htfCloseA = request.security(syminfo.tickerid, htfA, close,                lookahead = barmerge.lookahead_off)
+htfEmaA   = request.security(syminfo.tickerid, htfA, ta.ema(close, biasLen), lookahead = barmerge.lookahead_off)
+htfCloseB = request.security(syminfo.tickerid, htfB, close,                lookahead = barmerge.lookahead_off)
+htfEmaB   = request.security(syminfo.tickerid, htfB, ta.ema(close, biasLen), lookahead = barmerge.lookahead_off)
+
+bullA = htfCloseA > htfEmaA
+bearA = htfCloseA < htfEmaA
+bullB = htfCloseB > htfEmaB
+bearB = htfCloseB < htfEmaB
+
+biasBull = requireBoth ? (bullA and bullB) : bullA
+biasBear = requireBoth ? (bearA and bearB) : bearA
+
+anyDir      = tradeWith == "Both directions"
+longAllowed = anyDir or biasBull
+shortAllowed= anyDir or biasBear
+
+// ---- Daily reference levels -----------------------------------------
+pdh    = request.security(syminfo.tickerid, "D", high[1],           lookahead = barmerge.lookahead_off)
+pdl    = request.security(syminfo.tickerid, "D", low[1],            lookahead = barmerge.lookahead_off)
+dAtr   = request.security(syminfo.tickerid, "D", ta.atr(14)[1],     lookahead = barmerge.lookahead_off)
+
+// =====================================================================
+//  TARGET-TF FAIR VALUE GAPS (unfilled), used as draw-on-liquidity
+// =====================================================================
+
+gTime    = request.security(syminfo.tickerid, gapTF, time,                             lookahead = barmerge.lookahead_off)
+gBearTop = request.security(syminfo.tickerid, gapTF, high < low[2]  ? low[2]  : na,    lookahead = barmerge.lookahead_off)
+gBearBot = request.security(syminfo.tickerid, gapTF, high < low[2]  ? high    : na,    lookahead = barmerge.lookahead_off)
+gBullTop = request.security(syminfo.tickerid, gapTF, low  > high[2] ? low     : na,    lookahead = barmerge.lookahead_off)
+gBullBot = request.security(syminfo.tickerid, gapTF, low  > high[2] ? high[2] : na,    lookahead = barmerge.lookahead_off)
+
+newGapBar = gTime != gTime[1]
+
+// Bearish gaps sit ABOVE price -> long targets. Bullish gaps sit BELOW -> short targets.
+var array<float> upTop = array.new_float()
+var array<float> upBot = array.new_float()
+var array<float> dnTop = array.new_float()
+var array<float> dnBot = array.new_float()
+
+if newGapBar and not na(gBearTop) and not na(gBearBot)
+    array.push(upTop, gBearTop)
+    array.push(upBot, gBearBot)
+if newGapBar and not na(gBullTop) and not na(gBullBot)
+    array.push(dnTop, gBullTop)
+    array.push(dnBot, gBullBot)
+
+// Prune gaps that price has filled or is already past
+if array.size(upTop) > 0
+    int i = array.size(upTop) - 1
+    while i >= 0
+        if high >= array.get(upTop, i) or close > array.get(upTop, i)
+            array.remove(upTop, i)
+            array.remove(upBot, i)
+        i -= 1
+if array.size(dnTop) > 0
+    int j = array.size(dnTop) - 1
+    while j >= 0
+        if low <= array.get(dnBot, j) or close < array.get(dnBot, j)
+            array.remove(dnTop, j)
+            array.remove(dnBot, j)
+        j -= 1
+
+// Cap memory
+while array.size(upTop) > 60
+    array.shift(upTop)
+    array.shift(upBot)
+while array.size(dnTop) > 60
+    array.shift(dnTop)
+    array.shift(dnBot)
+
+nearestAbove(arr, px) =>
+    float best = na
+    if array.size(arr) > 0
+        for k = 0 to array.size(arr) - 1
+            float v = array.get(arr, k)
+            if v > px and (na(best) or v < best)
+                best := v
+    best
+
+nearestBelow(arr, px) =>
+    float best = na
+    if array.size(arr) > 0
+        for k = 0 to array.size(arr) - 1
+            float v = array.get(arr, k)
+            if v < px and (na(best) or v > best)
+                best := v
+    best
+
+// =====================================================================
+//  PRE-MARKET ACCUMULATION
+// =====================================================================
+
+var float pmHigh   = na
+var float pmLow    = na
+var int   tradesTd = 0
+
+if newDay
+    pmHigh   := na
+    pmLow    := na
+    tradesTd := 0
+
+if inPM
+    pmHigh := na(pmHigh) ? high : math.max(pmHigh, high)
+    pmLow  := na(pmLow)  ? low  : math.min(pmLow,  low)
+
+pmRange    = (na(pmHigh) or na(pmLow)) ? na : pmHigh - pmLow
+pmCompress = nz(dAtr, 0.0) > 0 and nz(pmRange, 1e12) <= pmMaxRange * nz(dAtr, 0.0)
+
+// =====================================================================
+//  MANIPULATION LEG TRACKING (inside the entry window)
+// =====================================================================
+
+sessionOpen = inEntry and not inEntry[1]
+
+var float runMax    = na
+var int   runMaxBar = na
+var float runMin    = na
+var int   runMinBar = na
+var float legTop    = na   // swing high that STARTED the down-leg (long setups)
+var int   legTopBar = na
+var float legBot    = na   // swing low that STARTED the up-leg (short setups)
+var int   legBotBar = na
+
+var float bfTop = na       // latest bearish LTF FVG (long trigger zone)
+var float bfBot = na
+var float blTop = na       // latest bullish LTF FVG (short trigger zone)
+var float blBot = na
+
+if sessionOpen
+    runMax    := high
+    runMaxBar := bar_index
+    runMin    := low
+    runMinBar := bar_index
+    legTop    := high
+    legTopBar := bar_index
+    legBot    := low
+    legBotBar := bar_index
+    bfTop     := na
+    bfBot     := na
+    blTop     := na
+    blBot     := na
+else if inEntry
+    if low < runMin
+        legTop    := runMax
+        legTopBar := runMaxBar
+        runMin    := low
+        runMinBar := bar_index
+    if high > runMax
+        legBot    := runMin
+        legBotBar := runMinBar
+        runMax    := high
+        runMaxBar := bar_index
+
+// LTF fair value gaps forming during the window
+bearFvgNow = high < low[2]
+bullFvgNow = low  > high[2]
+
+if inEntry and bearFvgNow
+    bfTop := low[2]
+    bfBot := high
+if inEntry and bullFvgNow
+    blTop := low
+    blBot := high[2]
+
+// =====================================================================
+//  STRUCTURE MEASUREMENT HELPERS
+// =====================================================================
+
+// Sum of bar ranges between two bar indices (inclusive), capped for speed
+sumRange(fromBar, toBar) =>
+    float s = 0.0
+    if not na(fromBar) and not na(toBar) and toBar >= fromBar
+        int off = bar_index - toBar
+        int n   = toBar - fromBar
+        int nn  = n > 60 ? 60 : n
+        if off >= 0
+            for i = 0 to nn
+                s += high[off + i] - low[off + i]
+    s
+
+// Count of 3-bar FVGs (either direction) inside the leg
+countFvg(fromBar, toBar) =>
+    int c = 0
+    if not na(fromBar) and not na(toBar) and toBar >= fromBar
+        int off = bar_index - toBar
+        int n   = toBar - fromBar
+        int nn  = n > 60 ? 60 : n
+        if off >= 0
+            for i = 0 to nn
+                bool bf = high[off + i] < low[off + i + 2]
+                bool bl = low[off + i]  > high[off + i + 2]
+                if bf or bl
+                    c += 1
+    c
+
+// ---- LONG-side leg quality (down manipulation) -----------------------
+legRangeL = (na(legTop) or na(runMin)) ? na : legTop - runMin
+legBarsL  = (na(legTopBar) or na(runMinBar)) ? na : runMinBar - legTopBar
+sumRngL   = sumRange(legTopBar, runMinBar)
+effL      = (na(legRangeL) or sumRngL <= 0) ? na : legRangeL / sumRngL
+fvgCntL   = countFvg(legTopBar, runMinBar)
+
+structOkL = nz(legRangeL, 0.0) >= minLegAtr * atr and
+             nz(legBarsL, 9999)  <= maxLegBars and
+             nz(legBarsL, 0)     >= minLegBars and
+             nz(effL, 0.0)       >= minEff and
+             fvgCntL             <= maxFvgInLeg and
+             atr                 >= minAtrPts
+
+// ---- SHORT-side leg quality (up manipulation) ------------------------
+legRangeS = (na(legBot) or na(runMax)) ? na : runMax - legBot
+legBarsS  = (na(legBotBar) or na(runMaxBar)) ? na : runMaxBar - legBotBar
+sumRngS   = sumRange(legBotBar, runMaxBar)
+effS      = (na(legRangeS) or sumRngS <= 0) ? na : legRangeS / sumRngS
+fvgCntS   = countFvg(legBotBar, runMaxBar)
+
+structOkS = nz(legRangeS, 0.0) >= minLegAtr * atr and
+             nz(legBarsS, 9999)  <= maxLegBars and
+             nz(legBarsS, 0)     >= minLegBars and
+             nz(effS, 0.0)       >= minEff and
+             fvgCntS             <= maxFvgInLeg and
+             atr                 >= minAtrPts
+
+// =====================================================================
+//  KEY LEVEL SWEEP
+// =====================================================================
+
+sweptPmDn = usePmSweep and nz(runMin,  1e12) <= nz(pmLow,  -1e12)
+sweptPdDn = usePdSweep and nz(runMin,  1e12) <= nz(pdl,    -1e12)
+sweptPmUp = usePmSweep and nz(runMax, -1e12) >= nz(pmHigh,  1e12)
+sweptPdUp = usePdSweep and nz(runMax, -1e12) >= nz(pdh,     1e12)
+
+sweptDown = sweptPmDn or sweptPdDn
+sweptUp   = sweptPmUp or sweptPdUp
+
+// =====================================================================
+//  ENTRY TRIGGER — displacement through an inverted LTF FVG
+// =====================================================================
+
+body      = math.abs(close - open)
+rng       = high - low
+bodyRatio = rng > 0 ? body / rng : 0.0
+
+dispUp = close > open and body >= dispAtrMult * atr and bodyRatio >= minBodyRatio
+dispDn = close < open and body >= dispAtrMult * atr and bodyRatio >= minBodyRatio
+
+// "confirmBars" consecutive closes beyond the inverted gap
+closesAboveBf = close > nz(bfTop,  1e12)
+closesBelowBl = close < nz(blBot, -1e12)
+
+var int cntAbove = 0
+var int cntBelow = 0
+if sessionOpen
+    cntAbove := 0
+    cntBelow := 0
+cntAbove := closesAboveBf ? cntAbove + 1 : 0
+cntBelow := closesBelowBl ? cntBelow + 1 : 0
+
+flat = strategy.position_size == 0
+
+longSig = inEntry and flat and longAllowed and pmCompress and sweptDown and
+          structOkL and cntAbove >= confirmBars and dispUp and tradesTd < maxTrades
+
+shortSig = inEntry and flat and shortAllowed and pmCompress and sweptUp and
+           structOkS and cntBelow >= confirmBars and dispDn and tradesTd < maxTrades
+
+// =====================================================================
+//  ORDER MANAGEMENT
+// =====================================================================
+
+var float ePx     = na
+var float sPx     = na
+var float tPx     = na
+var float riskPts = na
+var bool  beDone  = false
+var int   entryBar= na
+
+// --- LONG -------------------------------------------------------------
+if longSig
+    float stopRaw = runMin - stopBufTicks * tick
+    float r       = close - stopRaw
+    if r > 0 and r <= maxRiskPts
+        float tgt = close + rrTarget * r
+        if tpMode == "Nearest gap (with R floor)"
+            float g = nearestAbove(upBot, close)
+            tgt := (not na(g) and g >= close + minRR * r) ? g : close + math.max(rrTarget, minRR) * r
+        strategy.entry("L", strategy.long, alert_message = "Patty Swing LONG")
+        ePx      := close
+        sPx      := stopRaw
+        tPx      := tgt
+        riskPts  := r
+        beDone   := false
+        entryBar := bar_index
+        tradesTd := tradesTd + 1
+
+// --- SHORT ------------------------------------------------------------
+if shortSig
+    float stopRaw = runMax + stopBufTicks * tick
+    float r       = stopRaw - close
+    if r > 0 and r <= maxRiskPts
+        float tgt = close - rrTarget * r
+        if tpMode == "Nearest gap (with R floor)"
+            float g = nearestBelow(dnTop, close)
+            tgt := (not na(g) and g <= close - minRR * r) ? g : close - math.max(rrTarget, minRR) * r
+        strategy.entry("S", strategy.short, alert_message = "Patty Swing SHORT")
+        ePx      := close
+        sPx      := stopRaw
+        tPx      := tgt
+        riskPts  := r
+        beDone   := false
+        entryBar := bar_index
+        tradesTd := tradesTd + 1
+
+// --- Break-even management -------------------------------------------
+if strategy.position_size > 0 and not na(riskPts)
+    if not beDone and high >= ePx + beAtR * riskPts
+        sPx    := ePx + beOffTicks * tick
+        beDone := true
+    strategy.exit("L-x", from_entry = "L", stop = sPx, limit = tPx)
+
+if strategy.position_size < 0 and not na(riskPts)
+    if not beDone and low <= ePx - beAtR * riskPts
+        sPx    := ePx - beOffTicks * tick
+        beDone := true
+    strategy.exit("S-x", from_entry = "S", stop = sPx, limit = tPx)
+
+// --- Time stop & force flat ------------------------------------------
+timeUp = strategy.position_size != 0 and not na(entryBar) and (bar_index - entryBar) >= maxBarsTrade
+if timeUp
+    strategy.close_all(comment = "TimeStop")
+if inFlat and strategy.position_size != 0
+    strategy.close_all(comment = "SessionEnd")
+
+// =====================================================================
+//  VISUALS
+// =====================================================================
+
+plot(showLevels and inEntry and not na(pmHigh) ? pmHigh : na, "PM High", color.new(color.gray, 20), 1, plot.style_linebr)
+plot(showLevels and inEntry and not na(pmLow)  ? pmLow  : na, "PM Low",  color.new(color.gray, 20), 1, plot.style_linebr)
+plot(showLevels and strategy.position_size != 0 ? sPx : na, "Stop",   color.new(color.red,   0), 1, plot.style_linebr)
+plot(showLevels and strategy.position_size != 0 ? tPx : na, "Target", color.new(color.green, 0), 1, plot.style_linebr)
+
+bgcolor(showZones and inEntry ? color.new(color.blue, 92) : na, title = "Entry window")
+bgcolor(showZones and inPM    ? color.new(color.gray, 94) : na, title = "Pre-market window")
+
+plotshape(longSig,  "Long setup",  shape.triangleup,   location.belowbar, color.new(color.lime,  0), size = size.tiny)
+plotshape(shortSig, "Short setup", shape.triangledown, location.abovebar, color.new(color.red,   0), size = size.tiny)
+
+// =====================================================================
+//  ALERTS
+// =====================================================================
+
+alertcondition(longSig,  "Patty Swing LONG",  "9:30 Patty Swing LONG setup triggered")
+alertcondition(shortSig, "Patty Swing SHORT", "9:30 Patty Swing SHORT setup triggered")

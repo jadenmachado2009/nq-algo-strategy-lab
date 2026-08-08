@@ -1,0 +1,271 @@
+//@version=5
+strategy(
+     title         = "PB Stupid Simple Entry Model v1",
+     overlay       = true,
+     default_qty_type  = strategy.fixed,
+     default_qty_value = 1,
+     commission_type   = strategy.commission.percent,
+     commission_value  = 0.05,
+     slippage          = 2,
+     max_bars_back     = 500
+ )
+
+// ============================================================
+// INPUTS
+// ============================================================
+var g_session = "SESSION"
+i_sessionStart  = input.string("0830-1100", "NY Session (EST)", group=g_session)
+
+var g_htf = "HTF FVG"
+i_htf1  = input.timeframe("60",  "HTF Level 1 (1H)",  group=g_htf)
+i_htf2  = input.timeframe("240", "HTF Level 2 (4H)",  group=g_htf)
+i_fvgLookback = input.int(10, "HTF FVG Lookback (bars)", minval=3, maxval=50, group=g_htf)
+
+var g_ltf = "LTF FVG / IFVG"
+i_fvgLen    = input.int(1,   "5m FVG Confirmation (bars ago)", minval=1, maxval=5, group=g_ltf)
+i_retracePct= input.float(0.5, "FVG Retrace Threshold (0–1 = % into FVG)", minval=0.1, maxval=1.0, step=0.1, group=g_ltf)
+
+var g_risk = "RISK"
+i_slMult    = input.float(1.0, "SL ATR Multiplier (below sweep low)", minval=0.5, maxval=3.0, step=0.25, group=g_risk)
+i_rr        = input.float(2.0, "R:R Target", minval=1.0, maxval=5.0, step=0.5, group=g_risk)
+i_atrLen    = input.int(14, "ATR Length", group=g_risk)
+
+// ============================================================
+// SESSION FILTER
+// ============================================================
+inSession = not na(time(timeframe.period, i_sessionStart, "America/New_York"))
+
+// ============================================================
+// HTF FVG DETECTION via request.security()
+// A bullish FVG = candle[2] high < candle[0] low (gap between them)
+// A bearish FVG = candle[2] low  > candle[0] high
+// We pull the most recent unfilled FVG high/low from the HTF.
+// NOTE: request.security() uses lookahead=barmerge.lookahead_off
+//       to prevent future-leak. This means the HTF FVG only becomes
+//       known at the CLOSE of the HTF bar — acceptable for entries.
+// ============================================================
+
+// -- Helper: detect FVG on current bar of whichever TF is being evaluated
+htfBullFVG_top(src_high, src_low) =>
+    src_low[0] > src_high[2]   // gap exists
+
+htfBullFVG_bot(src_high, src_low) =>
+    src_low[0] > src_high[2] ? src_high[2] : na
+
+htfBearFVG_top(src_high, src_low) =>
+    src_high[0] < src_low[2] ? src_low[2] : na
+
+htfBearFVG_bot(src_high, src_low) =>
+    src_high[0] < src_low[2]
+
+// Pull HTF OHLC
+[htf1_o, htf1_h, htf1_l, htf1_c] = request.security(syminfo.tickerid, i_htf1, [open, high, low, close], lookahead=barmerge.lookahead_off)
+[htf2_o, htf2_h, htf2_l, htf2_c] = request.security(syminfo.tickerid, i_htf2, [open, high, low, close], lookahead=barmerge.lookahead_off)
+
+// Detect most recent HTF bullish FVG zone
+// We track the FVG top/bottom from the most recent valid HTF gap
+f_htfBullZone(h, l) =>
+    fvg_top = float(na)
+    fvg_bot = float(na)
+    for i = 0 to i_fvgLookback
+        if l[i] > h[i + 2]
+            fvg_top := l[i]       // bottom of gap candle = top of gap body approach
+            fvg_bot := h[i + 2]   // top of prior candle
+            break
+    [fvg_top, fvg_bot]
+
+f_htfBearZone(h, l) =>
+    fvg_top = float(na)
+    fvg_bot = float(na)
+    for i = 0 to i_fvgLookback
+        if h[i] < l[i + 2]
+            fvg_top := l[i + 2]
+            fvg_bot := h[i]
+            break
+    [fvg_top, fvg_bot]
+
+[htf1_bull_top, htf1_bull_bot] = request.security(syminfo.tickerid, i_htf1, f_htfBullZone(high, low), lookahead=barmerge.lookahead_off)
+[htf2_bull_top, htf2_bull_bot] = request.security(syminfo.tickerid, i_htf2, f_htfBullZone(high, low), lookahead=barmerge.lookahead_off)
+[htf1_bear_top, htf1_bear_bot] = request.security(syminfo.tickerid, i_htf1, f_htfBearZone(high, low), lookahead=barmerge.lookahead_off)
+[htf2_bear_top, htf2_bear_bot] = request.security(syminfo.tickerid, i_htf2, f_htfBearZone(high, low), lookahead=barmerge.lookahead_off)
+
+// Combine: price inside EITHER 1H or 4H bullish FVG = HTF long context valid
+htfBullContext = (close <= htf1_bull_top and close >= htf1_bull_bot) or
+                 (close <= htf2_bull_top and close >= htf2_bull_bot)
+
+htfBearContext = (close >= htf1_bear_bot and close <= htf1_bear_top) or
+                 (close >= htf2_bear_bot and close <= htf2_bear_top)
+
+// ============================================================
+// 5M FVG DETECTION (on current chart TF — assumes chart is 5m)
+// Bullish 5m FVG: low[0] > high[2]  → gap between bar[2] top and bar[0] bottom
+// We track the FVG zone and whether price has retraced into it
+// ============================================================
+
+var float bull5_top = na
+var float bull5_bot = na
+var float bear5_top = na
+var float bear5_bot = na
+var bool  bull5_valid = false   // true until filled or invalidated
+var bool  bear5_valid = false
+
+// New 5m bullish FVG formed this bar?
+newBull5FVG = low > high[2]
+newBear5FVG = high < low[2]
+
+// Update stored FVG — only overwrite with fresh one when in session
+if inSession
+    if newBull5FVG
+        bull5_top   := low          // gap top = current bar's low
+        bull5_bot   := high[2]      // gap bot = 2 bars ago high
+        bull5_valid := true
+    if newBear5FVG
+        bear5_top   := low[2]
+        bear5_bot   := high
+        bear5_valid := true
+
+// Invalidate if price closes fully through the FVG (filled)
+if bull5_valid and close < bull5_bot
+    bull5_valid := false
+if bear5_valid and close > bear5_top
+    bear5_valid := false
+
+// ============================================================
+// RETRACE INTO 5M FVG
+// Price must retrace back into the FVG zone (at least i_retracePct of the way through)
+// ============================================================
+
+bull5_retraceLevel = na(bull5_top) or na(bull5_bot) ? na : bull5_top - (bull5_top - bull5_bot) * i_retracePct
+bear5_retraceLevel = na(bear5_top) or na(bear5_bot) ? na : bear5_bot + (bear5_top - bear5_bot) * i_retracePct
+
+// Has price tapped into the FVG at least i_retracePct deep?
+priceInBull5FVG = bull5_valid and low <= bull5_retraceLevel and low >= bull5_bot
+priceInBear5FVG = bear5_valid and high >= bear5_retraceLevel and high <= bear5_top
+
+// ============================================================
+// LOWER TF INVERSION (IFVG) — Approximated on current TF
+// True IFVG on 1m-3m cannot be read in real-time without repainting.
+// Approximation: a bearish FVG that gets "inverted" = price closes
+// ABOVE its top after forming it. We detect this on the current chart TF.
+// For best results, run this script on a 1m or 2m chart while using
+// 5m / 1H / 4H via request.security(). This is the cleanest approach.
+//
+// IFVG Long trigger: a prior bearish FVG (high[i] < low[i+2]) whose
+// top has now been closed above → inversion = bullish signal
+// ============================================================
+
+var float ifvg_bear_top = na  // top of a prior bearish FVG we're watching
+var float ifvg_bear_bot = na
+
+// Detect a recent bearish FVG to watch for inversion
+for i = 1 to 5
+    if high[i] < low[i + 2] and na(ifvg_bear_top)
+        ifvg_bear_top := low[i + 2]
+        ifvg_bear_bot := high[i]
+        break
+
+// Inversion = price closes above the bearish FVG top → bullish IFVG trigger
+bullIFVG = not na(ifvg_bear_top) and close > ifvg_bear_top
+
+// Reset after inversion fires so we look for a fresh one
+if bullIFVG
+    ifvg_bear_top := na
+    ifvg_bear_bot := na
+
+// Short IFVG: prior bullish FVG whose bottom has been closed below
+var float ifvg_bull_top = na
+var float ifvg_bull_bot = na
+
+for i = 1 to 5
+    if low[i] > high[i + 2] and na(ifvg_bull_bot)
+        ifvg_bull_top := low[i]
+        ifvg_bull_bot := high[i + 2]
+        break
+
+bearIFVG = not na(ifvg_bull_bot) and close < ifvg_bull_bot
+
+if bearIFVG
+    ifvg_bull_top := na
+    ifvg_bull_bot := na
+
+// ============================================================
+// LIQUIDITY SWEEP DETECTION
+// Preferred: price swept an intermediate low before retracing up.
+// We approximate: did the low of the retrace candle undercut the
+// previous swing low (lookback 3–10 bars)?
+// ============================================================
+
+swingLow  = ta.lowest(low, 10)
+swingHigh = ta.highest(high, 10)
+
+// Sweep = current bar low went below recent swing low but closed above it
+liqSweepLong  = low < swingLow[1] and close > swingLow[1]
+liqSweepShort = high > swingHigh[1] and close < swingHigh[1]
+
+// ============================================================
+// COMPLETE ENTRY CONDITIONS
+// LONG:  session + HTF bull context + 5m FVG formed + price in FVG + bull IFVG
+// SHORT: session + HTF bear context + 5m FVG formed + price in FVG + bear IFVG
+// ============================================================
+
+longCondition  = inSession and htfBullContext and bull5_valid and priceInBull5FVG and bullIFVG
+shortCondition = inSession and htfBearContext and bear5_valid and priceInBear5FVG and bearIFVG
+
+// ============================================================
+// RISK MANAGEMENT
+// SL: below the sweep low (or low of entry candle) + ATR buffer
+// TP: SL distance × R:R
+// ============================================================
+
+atr = ta.atr(i_atrLen)
+
+// Track entry price and sweep low for stop placement
+var float entryPrice = na
+var float stopLong   = na
+var float stopShort  = na
+
+if longCondition and strategy.position_size == 0
+    entryPrice := close
+    stopLong   := low - atr * i_slMult     // below current bar low + buffer
+    tpLong     = close + (close - stopLong) * i_rr
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Long Exit", "Long", stop=stopLong, limit=tpLong)
+
+if shortCondition and strategy.position_size == 0
+    entryPrice := close
+    stopShort  := high + atr * i_slMult
+    tpShort    = close - (stopShort - close) * i_rr
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Short Exit", "Short", stop=stopShort, limit=tpShort)
+
+// ============================================================
+// PLOTS
+// ============================================================
+
+// HTF FVG zones (boxes would need array/line tools — simplified to levels here)
+plot(htf1_bull_top, "1H Bull FVG Top", color=color.new(color.green, 70), linewidth=1, style=plot.style_stepline)
+plot(htf1_bull_bot, "1H Bull FVG Bot", color=color.new(color.green, 70), linewidth=1, style=plot.style_stepline)
+plot(htf1_bear_top, "1H Bear FVG Top", color=color.new(color.red, 70),   linewidth=1, style=plot.style_stepline)
+plot(htf1_bear_bot, "1H Bear FVG Bot", color=color.new(color.red, 70),   linewidth=1, style=plot.style_stepline)
+
+// 5m FVG zone
+bull5FVGTop_plot = bull5_valid ? bull5_top : na
+bull5FVGBot_plot = bull5_valid ? bull5_bot : na
+bear5FVGTop_plot = bear5_valid ? bear5_top : na
+bear5FVGBot_plot = bear5_valid ? bear5_bot : na
+
+plot(bull5FVGTop_plot, "5m Bull FVG Top", color=color.new(color.lime, 50), linewidth=2)
+plot(bull5FVGBot_plot, "5m Bull FVG Bot", color=color.new(color.lime, 50), linewidth=2)
+plot(bear5FVGTop_plot, "5m Bear FVG Top", color=color.new(color.orange, 50), linewidth=2)
+plot(bear5FVGBot_plot, "5m Bear FVG Bot", color=color.new(color.orange, 50), linewidth=2)
+
+// Entry signals
+plotshape(longCondition,  title="Long Entry",  location=location.belowbar, style=shape.triangleup,   color=color.lime,   size=size.small)
+plotshape(shortCondition, title="Short Entry", location=location.abovebar, style=shape.triangledown, color=color.red,    size=size.small)
+
+// Liquidity sweep markers
+plotshape(liqSweepLong,  title="Liq Sweep Low",  location=location.belowbar, style=shape.circle, color=color.aqua,   size=size.tiny)
+plotshape(liqSweepShort, title="Liq Sweep High", location=location.abovebar, style=shape.circle, color=color.yellow, size=size.tiny)
+
+// Session shading
+bgcolor(inSession ? color.new(color.blue, 93) : na, title="NY Session")
