@@ -9,6 +9,27 @@ cheaply, before money is involved.
 
 ---
 
+## Versions
+
+**[v3 — prop convexity: risk geometry over edge](https://github.com/jadenmachado2009/nq-algo-strategy-lab/releases/tag/v3)** ← the useful one
+
+The only positive result here, and it doesn't need a trading edge. A real futures trailing
+drawdown freezes once you're far enough ahead (`dd_line = min(peak − D, cap)`), so variance is
+expensive before the freeze and cheap after it. Trading small then escalating is worth +$49–73 per
+attempt over any fixed-risk plan. **~30% pass rate, +$146 to +$408 EV per attempt on a zero-edge
+strategy**, still positive down to a true edge of −0.10R.
+
+- Spec: [`research/PROP_PLAYBOOK.md`](research/PROP_PLAYBOOK.md)
+- Tools: [`research/geometry_search.py`](research/geometry_search.py), [`research/bankroll.py`](research/bankroll.py), [`research/prop_mc.py`](research/prop_mc.py)
+- Reality check: one attempt is a losing bet 78% of the time; ~10 attempts ($1,670) for an 84% chance of profit
+
+**[v2 — evidence-first validation suite](https://github.com/jadenmachado2009/nq-algo-strategy-lab/releases/tag/v2)**
+
+The searches that found nothing, and the machinery that proved it: QuantConnect backtests, the
+IBKR paper bot, the 450-combo search with its null test, and `research/MATH.md`.
+
+---
+
 ## Results so far
 
 | Strategy | Sample | In-sample | Out-of-sample | Verdict |
