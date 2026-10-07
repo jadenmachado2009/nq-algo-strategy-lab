@@ -24,6 +24,22 @@ produces across 450 tries.
 **Verdict: nothing found.** A PF 1.42 "winner" is exactly what searching 450 combos produces
 on noise. Without the null test this would have looked like a discovery.
 
+## `search_5m.py` — the same search on 531k bars of 5-minute data
+
+The hourly run left 150–320 trades per combo (CI ±0.15R), too wide to detect the +0.10R edge the
+prop maths rewards. This run uses Dukascopy 5-minute NQ, 2019–2026, **531,355 bars**, split 70/30
+in time, with the null test run on the in-sample half only.
+
+**Result (2026-10-07):** best in-sample +0.074R over 1,772 trades (Donchian-20 breakout + 50/200
+trend filter + NY morning; the entire top-10 is that family). Null test over 25 synthetic paths:
+best-on-noise **mean +0.115R**, max +0.275R → **p = 0.72**. The real winner is below the typical
+noise winner. Out-of-sample: −0.023R over 811 trades.
+
+Year by year the family decays — +0.17R (2019), +0.11/+0.09/+0.07R (2021–23), then −0.00/−0.04/−0.02R
+(2024–26) — which is why an in-sample window ending mid-2024 looked positive.
+
+Full write-up: `backtests/2026-10-07_search_5m_2019-2026.md`.
+
 ## `prop_mc.py` / `prop_edge_sensitivity.py` — prop account as a structured product
 
 From DeltaTrend Trading, *"stop trading like an idiot"*: a challenge account has a convex payoff

@@ -122,8 +122,12 @@ def funded_ev(r_pool, firm, risk_frac, paths=20_000, trades_per_day=2, max_days=
         hit = alive & (equity >= firm.payout_threshold)
         if hit.any():
             paid += np.where(hit, equity * firm.split, 0.0)
-            equity = np.where(hit, 0.0, equity)    # withdraw profit, reset to baseline
-            peak = np.where(hit, 0.0, peak)
+            # Withdraw profit: equity returns to baseline, but the trailing
+            # drawdown line does NOT reset -- the high-water mark stays where it
+            # was, so each payout permanently shrinks the remaining buffer.
+            # (Resetting peak here would hand the trader unlimited lives and
+            # roughly doubles E[payout]; real futures accounts do not do that.)
+            equity = np.where(hit, 0.0, equity)
     return paid.mean()
 
 
