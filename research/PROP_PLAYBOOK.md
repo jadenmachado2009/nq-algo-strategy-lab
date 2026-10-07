@@ -98,6 +98,23 @@ the target takes 6+ net winners to reach.
 
 ---
 
+## What a positive EV actually means for you (`bankroll.py`)
+
+EV per attempt is an average over many attempts. The payoff is a lottery: most attempts lose the
+fee, a minority pay a few thousand. Apex-like profile, EV-best policy, zero edge:
+
+| Attempts | Capital at risk | P(in profit) | Median | Mean |
+|---|---|---|---|---|
+| **1** | $167 | **22%** | **−$167** | +$411 |
+| 5 | $835 | 71% | +$965 | +$2,032 |
+| 10 | $1,670 | 84% | +$2,830 | +$4,035 |
+| 20 | $3,340 | 93% | +$7,460 | +$8,082 |
+
+Also: **27% of funded accounts never pay out at all**, and the median payout ($900) is less than
+half the mean ($1,902) — the average is carried by a minority of good runs.
+
+Treat each fee as spent money. One attempt is a losing bet 78% of the time.
+
 ## What this is not
 
 1. **Not a profitable trading strategy.** It makes money from the *fee structure*, not the market.
@@ -105,7 +122,9 @@ the target takes 6+ net winners to reach.
 2. **71% of attempts still fail.** The EV is an average over many attempts, each costing a real fee.
    Position this as a repeated game or not at all.
 3. **The model omits:** scaling plans, payout waiting periods, platform fees, news-event rules,
-   and the possibility that a firm simply changes its terms.
+   and the possibility that a firm simply changes its terms. One gap is known to matter: **Apex-style
+   fees are a monthly subscription, not a one-off**, so an evaluation spanning two months costs
+   double what these tables assume.
 4. **Verify the real rules before paying anything.** The two profiles here are *stylised*. Actual
    trailing-drawdown mechanics, caps, consistency definitions and fees differ per firm and change.
 5. **Age:** funded accounts require you to be 18+, and contracts with minors are void. Settle who
