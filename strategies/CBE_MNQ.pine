@@ -1,0 +1,101 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jadenmachado1234
+
+//@version=6
+// CBE on MNQ — TradingView port matching quantconnect/cbe_mnq.py, ninjatrader/CBE_MNQ.cs
+// and execution/ibkr_paper/cbe.py. Use for forward tests on data after the QC out-of-sample
+// window (set "Count trades from"). Stop/target are in ticks from the actual entry fill.
+strategy("CBE-MNQ | Candle Body Exhaustion",
+     overlay                  = true,
+     initial_capital          = 50000,
+     default_qty_type         = strategy.fixed,
+     default_qty_value        = 1,
+     commission_type          = strategy.commission.cash_per_contract,
+     commission_value         = 0.62,
+     slippage                 = 1,
+     process_orders_on_close  = false,
+     max_bars_back            = 500)
+
+// ── INPUTS ──────────────────────────────────────────────────
+seqLen      = input.int(3,     'Sequence length',          minval = 2, maxval = 6,  group = 'Pattern')
+minBodyAtr  = input.float(0.1, 'Min first body (× ATR)',   minval = 0.0, step = 0.1, group = 'Pattern')
+atrLen      = input.int(14,    'ATR length',               minval = 1,              group = 'Exits')
+atrSL       = input.float(1.7, 'Stop (× ATR)',             minval = 0.1, step = 0.1, group = 'Exits')
+atrTP       = input.float(2.5, 'Target (× ATR)',           minval = 0.1, step = 0.1, group = 'Exits')
+riskPct     = input.float(1.0, 'Risk per trade (%)',       minval = 0.1, step = 0.1, group = 'Risk')
+maxQty      = input.int(10,    'Max contracts',            minval = 1,              group = 'Risk')
+maxDayLoss  = input.float(1000,'Max daily loss ($)',       minval = 50,             group = 'Risk')
+startHHmm   = input.int(930,   'Entries from (NY HHmm)',                            group = 'Session')
+endHHmm     = input.int(1130,  'Entries until (NY HHmm)',                           group = 'Session')
+flatHHmm    = input.int(1550,  'Flatten at (NY HHmm)',                              group = 'Session')
+countFrom   = input.time(timestamp('2026-07-01T00:00:00-04:00'), 'Count trades from', group = 'Test window')
+
+const string NY = 'America/New_York'
+
+// ── CLOCK (bar CLOSE time, New York) ────────────────────────
+nyHHmm  = hour(time_close, NY) * 100 + minute(time_close, NY)
+nyDay   = dayofmonth(time_close, NY)
+newDay  = nyDay != nyDay[1]
+
+// ── DAILY LOSS (realized + open, from equity at start of NY day) ──
+var float dayStartEquity = strategy.initial_capital
+var bool  haltedToday    = false
+if newDay
+    dayStartEquity := strategy.equity
+    haltedToday    := false
+if strategy.equity - dayStartEquity <= -maxDayLoss
+    haltedToday := true
+
+// ── PATTERN: seqLen consecutive candles, bodies shrinking oldest -> newest ──
+atr = ta.atr(atrLen)
+
+shrinking(bool bearish) =>
+    bool ok = true
+    float prev = na
+    for i = seqLen - 1 to 0
+        float body = bearish ? open[i] - close[i] : close[i] - open[i]
+        if body <= 0
+            ok := false
+        if i == seqLen - 1 and body < atr * minBodyAtr
+            ok := false
+        if not na(prev) and body > prev
+            ok := false
+        prev := body
+    ok
+
+bearRun = shrinking(true)
+bullRun = shrinking(false)
+
+// ── SIZING ──────────────────────────────────────────────────
+stopTicks   = math.max(1, math.round(atr * atrSL / syminfo.mintick))
+targetTicks = math.max(1, math.round(atr * atrTP / syminfo.mintick))
+riskPerCtr  = stopTicks * syminfo.mintick * syminfo.pointvalue
+qty         = math.min(maxQty, math.floor(strategy.equity * riskPct / 100 / riskPerCtr))
+
+// ── ENTRIES ─────────────────────────────────────────────────
+inWindow = time >= countFrom and dayofweek(time_close, NY) != dayofweek.saturday and dayofweek(time_close, NY) != dayofweek.sunday
+canEnter = inWindow and not haltedToday and strategy.position_size == 0 and nyHHmm >= startHHmm and nyHHmm <= endHHmm and qty >= 1
+
+var int sl = na
+var int tp = na
+if canEnter and bearRun
+    sl := stopTicks
+    tp := targetTicks
+    strategy.entry('L', strategy.long, qty = qty)
+else if canEnter and bullRun
+    sl := stopTicks
+    tp := targetTicks
+    strategy.entry('S', strategy.short, qty = qty)
+
+// Ticks measured from the actual fill price
+strategy.exit('L x', 'L', loss = sl, profit = tp)
+strategy.exit('S x', 'S', loss = sl, profit = tp)
+
+// ── FLATTEN ─────────────────────────────────────────────────
+if strategy.position_size != 0 and (haltedToday or (nyHHmm >= flatHHmm and nyHHmm < 1800))
+    strategy.close_all(comment = haltedToday ? 'daily loss' : 'EOD')
+
+// ── PLOTS ───────────────────────────────────────────────────
+plotshape(canEnter and bearRun, 'Long signal',  shape.triangleup,   location.belowbar, color.new(color.teal, 10),   size = size.small)
+plotshape(canEnter and bullRun and not bearRun, 'Short signal', shape.triangledown, location.abovebar, color.new(color.orange, 10), size = size.small)
+bgcolor(time >= countFrom and nyHHmm >= startHHmm and nyHHmm <= endHHmm ? color.new(color.blue, 94) : na, title = 'Entry window')

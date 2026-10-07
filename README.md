@@ -5,15 +5,19 @@ Local working repo for systematic strategy development. Pine Script for signal l
 ```
 strategies/     Pine Script strategy source
 quantconnect/   LEAN/Python ports for multi-year backtesting
+ninjatrader/    NinjaScript ports for free sim paper trading (Windows)
+execution/      Paper-trading bots (ibkr_paper: MNQ via Interactive Brokers)
 backtests/      Recorded results — one file per run, never overwrite
 ```
+
+NQ futures testing without real money: see `NQ_TESTING.md`.
 
 ## Strategy inventory
 
 | File | Concept | Status |
 |---|---|---|
-| `CBE_v1.pine` | Candle body exhaustion — fade a sequence of shrinking bodies | Ready to backtest |
-| `PB_StupidSimple_v1.pine` | ICT/PB — HTF FVG context + 5m FVG retrace + IFVG trigger | Logic gaps, see audit |
+| `CBE_v1.pine` | Candle body exhaustion — fade a sequence of shrinking bodies | **Rejected on NQ** (PF 0.80 OOS, 2026-09-17) |
+| `PB_StupidSimple_v1.pine` | ICT/PB — HTF FVG context + 5m FVG retrace + IFVG trigger | Audit fixes ported to `execution/ibkr_paper/pb_engine.py`; tested 2026-09-18 — **too few trades to judge** (~6/yr) |
 | `htf_bias_strategy.pine` | 4H bias + 15m breakout | **Broken — cannot trade** |
 | `patty_swing_strategy.pine` | Swing model | Not yet audited |
 
