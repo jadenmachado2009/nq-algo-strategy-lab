@@ -78,7 +78,7 @@ Two findings:
    the attempt regardless of how good the strategy is. The optimum sits near 0.75%.
 2. **You can't tell which side of the line you're on.** Resolving −0.075R from 0 at 95% confidence
    needs **~1,340 trades** (σ ≈ 1.4R). The search winners had 154–320; PB had 46. Only CBE had
-   enough — and it measured −0.15R, correctly below the line.
+   enough — and it measured −0.05R in-sample / −0.11R out-of-sample, correctly below the line.
 
 Full derivations, including the gambler's-ruin argument for the optimal risk fraction:
 **[`research/MATH.md`](research/MATH.md)**.

@@ -83,7 +83,7 @@ $2,500 rather than $2,000.
 | −0.05R | 26.3% | +$93 | +$110 |
 | −0.10R | 21.2% | +$24 | +$28 |
 
-Still positive at −0.10R, which is worse than anything we have measured except CBE (−0.15R). The
+Still positive at −0.10R, which is about as bad as CBE's out-of-sample edge (−0.11R over 528 trades). The
 geometry improvements pushed the break-even edge from −0.075R down to roughly **−0.12R**.
 
 ## Consistency rules

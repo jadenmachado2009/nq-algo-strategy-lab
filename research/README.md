@@ -66,7 +66,7 @@ Two real findings:
    trailing drawdown before the target regardless of edge.
 2. **But you can't measure which side of that line you're on.** With an R standard deviation of ~1.4,
    distinguishing −0.075R from 0 at 95% confidence needs **~1,340 trades**. Our search winners had
-   150–320. Only CBE had enough (≈1,500 trades, −0.15R measured) — and it sits clearly below the line,
+   150–320. Only CBE had enough (≈1,500 trades, −0.05R in-sample / −0.11R out-of-sample) — below the line,
    which is why its simulated prop EV is −$111/attempt.
 
 **Consequence:** the prop play is only actionable with a strategy whose edge is measured over

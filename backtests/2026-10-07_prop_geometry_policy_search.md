@@ -24,7 +24,9 @@ Gain purely from exploiting the frozen trailing drawdown: **+$49 (Topstep-like),
 
 ## Robustness
 Still EV-positive at a true edge of −0.10R (+$24), versus a previous break-even of −0.075R under
-fixed risk. Measured inputs for comparison: random entries −0.015R, CBE −0.15R.
+fixed risk. Measured inputs for comparison: random entries −0.015R, CBE −0.05R in-sample and
+−0.11R out-of-sample (the −0.16R figure quoted earlier came from a 41-trade forward replay and is
+too small a sample to represent the strategy).
 
 Consistency rule (largest day as a share of total profit) holds 100% for all recommended policies;
 only the aggressive RR-3 escalation variant drops to 84%, and the tool ranks by EV assuming those

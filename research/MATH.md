@@ -267,7 +267,9 @@ With the measured `σ ≈ 1.4R` on 1:2 bracket trades:
 | **0.075R** (the break-even line) | **~1,340** |
 | 0.10R | ~750 |
 
-Our samples: CBE ≈ 1,500 trades (enough — and it measured −0.15R, clearly below the line);
+Our samples: CBE ≈ 1,500 trades (enough — and it measured −0.05R in-sample and −0.11R
+out-of-sample, both clearly below the line; a separate 41-trade forward replay came in at −0.16R,
+but that sample is far too small to quote as the strategy's edge);
 the search winners 154–320 trades (95% CI ≈ ±0.15R, which spans the entire decision);
 PB 46 trades (CI ≈ ±0.4R, meaningless).
 
