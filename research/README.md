@@ -72,6 +72,21 @@ Two real findings:
 **Consequence:** the prop play is only actionable with a strategy whose edge is measured over
 ~1,500+ trades. That is a *sample-size* problem, not a strategy-hunting problem.
 
+## `geometry_search.py` — searching risk policies instead of signals
+
+Since no entry edge survived testing, this searches the lever that does move: risk geometry. It
+exploits the fact that a real futures trailing drawdown **freezes** once you are far enough ahead
+(`dd_line = min(peak - D, cap)`), so variance is expensive before the freeze and cheap after it.
+
+**Result (zero-edge trade distribution, -0.02R):** a policy of 0.75% base risk, 1 trade/day,
+halving risk inside 60% of target and escalating once the trail freezes reaches **~30% pass rate**
+and **+$146 to +$408 net EV per attempt** depending on firm profile — and stays positive down to a
+true edge of about -0.10R. Using the frozen-trail structure is worth +$49 to +$73 per attempt over
+the best fixed-risk policy. Consistency-rule compliance is checked and holds at 100% for the
+recommended settings.
+
+Full spec, numbers and caveats: **`research/PROP_PLAYBOOK.md`**.
+
 ## Honest caveats
 - Hourly data and 2.4 years only (free Yahoo limit). Validation of any survivor belongs on
   QuantConnect 2019–2023, which this search has never seen.
