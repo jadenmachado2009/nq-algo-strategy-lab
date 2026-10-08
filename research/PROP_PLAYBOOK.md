@@ -16,6 +16,8 @@ Frequency  ~2.9 trades per session
 Firm       Topstep 50K, Standard Path, add the Daily Loss Limit ($39/month)
 ```
 
+Runnable TradingView version: [`strategies/ORB_MNQ.pine`](../strategies/ORB_MNQ.pine).
+
 Measured on 7,063 trades over 7.8 years of 5m NQ: **win rate 65.4%, +0.022R per trade**,
 and it **passed the block-bootstrap null test (p = 0.00)** — the only strategy in this repo
 that has.

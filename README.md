@@ -24,6 +24,7 @@ chance of passing one — but only a **44.6% chance of ending in profit**, becau
 accounts never pay out**. Median outcome −$188, mean +$1,235.
 
 - Spec and bankroll table: [`research/PROP_PLAYBOOK.md`](research/PROP_PLAYBOOK.md)
+- **Runnable strategy:** [`strategies/ORB_MNQ.pine`](strategies/ORB_MNQ.pine) — TradingView version of the spec (compiles clean on v6)
 - Tools: [`research/orb.py`](research/orb.py), [`research/topstep.py`](research/topstep.py), [`research/video_model.py`](research/video_model.py), [`research/bankroll.py`](research/bankroll.py)
 
 
@@ -157,6 +158,7 @@ Targets: PF > 1.5, win rate > 50%, max drawdown < 15%, expectancy > 0.3R.
 
 | File | Concept | Status |
 |---|---|---|
+| `ORB_MNQ.pine` | Opening range breakout, long only, 0.5:1 bracket | **Validated** — +0.022R over 7,063 trades, null test p = 0.00 |
 | `CBE_v1.pine` | Candle body exhaustion — fade shrinking bodies | **Retired on NQ** (PF 0.80 OOS, 2026-09-17) |
 | `PB_StupidSimple_v1.pine` | ICT — HTF FVG context + 5m FVG retrace + IFVG trigger | Audit bugs fixed in `pb_engine.py`; **too few trades to judge** (~6/yr) |
 | `htf_bias_strategy.pine` | 4H bias + 15m breakout | **Broken** — compares a bar's close to its own high; can never trade. See `AUDIT.md` |
