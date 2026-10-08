@@ -43,8 +43,18 @@ A fixed-risk plan ignores this. The policy below does not — and that differenc
 something cheap and repeatable (e.g. opening-range break of the first 5m bar, or the Donchian-20
 breakout already coded). What matters is the cost profile, not the signal.
 
-**Costs:** stops must be wide. At a 1×ATR stop (~70 pts hourly, ~12 pts on 5m) cost drag is
-0.016–0.097R per trade. At a 10-point stop it is 0.112R, which alone breaks the maths.
+**Costs: stop width is the binding requirement, not a preference.** Measured on 20,000 random-entry
+trades over 7.8 years, the expectancy of a zero-skill strategy depends entirely on how wide the stop is:
+
+| Setup | Stop | Measured expectancy | Clears the −0.075R line? |
+|---|---|---|---|
+| 5m, 1×ATR | ~12 pts | **−0.12R** | No |
+| Hourly, 1×ATR | ~71 pts | −0.08R | Borderline |
+| Hourly, 2×ATR | ~143 pts | −0.031R | Yes |
+| Hourly, 3×ATR | ~214 pts | **−0.016R** | Yes |
+
+**Use stops of at least 2×ATR on hourly bars (~150+ NQ points).** Tighter than that and random
+trading alone loses more than the entire break-even budget, before any strategy error.
 
 **Risk policy:**
 
@@ -85,6 +95,12 @@ $2,500 rather than $2,000.
 
 Still positive at −0.10R, which is about as bad as CBE's out-of-sample edge (−0.11R over 528 trades). The
 geometry improvements pushed the break-even edge from −0.075R down to roughly **−0.12R**.
+
+**Correction (2026-10-09).** An earlier version of this file quoted the zero-edge baseline as −0.002R
+from a 5,471-trade sample. That figure was not reproducible: identical code on data differing by ten
+bars returned −0.075R, and the ±0.03 interval quoted alongside it wrongly assumed independent trades
+when they all come from one price path. The corrected baseline is in the costs section above — it is
+a function of stop width, from −0.12R (tight) to −0.016R (wide).
 
 ## Consistency rules
 

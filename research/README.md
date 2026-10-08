@@ -78,7 +78,7 @@ Since no entry edge survived testing, this searches the lever that does move: ri
 exploits the fact that a real futures trailing drawdown **freezes** once you are far enough ahead
 (`dd_line = min(peak - D, cap)`), so variance is expensive before the freeze and cheap after it.
 
-**Result (zero-edge trade distribution, -0.02R):** a policy of 0.75% base risk, 1 trade/day,
+**Result (zero-edge trade distribution, -0.02R — achievable only with stops >= 2xATR hourly; see the correction note below):** a policy of 0.75% base risk, 1 trade/day,
 halving risk inside 60% of target and escalating once the trail freezes reaches **~30% pass rate**
 and **+$146 to +$408 net EV per attempt** depending on firm profile — and stays positive down to a
 true edge of about -0.10R. Using the frozen-trail structure is worth +$49 to +$73 per attempt over
@@ -86,6 +86,23 @@ the best fixed-risk policy. Consistency-rule compliance is checked and holds at 
 recommended settings.
 
 Full spec, numbers and caveats: **`research/PROP_PLAYBOOK.md`**.
+
+## Correction (2026-10-09)
+
+An earlier zero-edge baseline of -0.002R was not reproducible — rerunning the same code on data
+differing by ten bars gave -0.075R. Trades from a single price path are not independent, so the
+naive standard error understated the uncertainty. Measured properly over 7.8 years and ~20,000
+random-entry trades, the zero-skill expectancy is a function of STOP WIDTH:
+
+| Setup | Measured |
+|---|---|
+| 5m, 1xATR (~12 pts) | **-0.12R** (below the -0.075R break-even line) |
+| Hourly, 1xATR (~71 pts) | -0.08R |
+| Hourly, 2xATR (~143 pts) | -0.031R |
+| Hourly, 3xATR (~214 pts) | **-0.016R** |
+
+So "no edge required" holds only with wide stops. With tight stops the scheme is EV-negative before
+any strategy is involved.
 
 ## Honest caveats
 - Hourly data and 2.4 years only (free Yahoo limit). Validation of any survivor belongs on
