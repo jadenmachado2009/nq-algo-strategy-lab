@@ -1,5 +1,54 @@
 # The prop playbook: a strategy that fits the convexity maths
 
+> **v4 — the spec below is now built on a strategy with a measured edge (ORB), not on a
+> zero-edge assumption. The zero-edge analysis that follows is kept because it sets the floor:
+> it is what the plan is worth if the edge turns out to be nothing.**
+
+## The current spec (v4)
+
+```
+Strategy   ORB, long only, opening ranges 10 / 20 / 30 / 45 / 60 minutes from 09:30 NY
+Entry      first 5m close beyond the range, filled at the next bar's open
+Stop       the opposite side of the opening range (57-117 pts on NQ, by window)
+Target     0.5 x the stop distance
+Size       0.75% of account per trade ($375 on a 50K) -> 1-3 MNQ depending on window
+Frequency  ~2.9 trades per session
+Firm       Topstep 50K, Standard Path, add the Daily Loss Limit ($39/month)
+```
+
+Measured on 7,063 trades over 7.8 years of 5m NQ: **win rate 65.4%, +0.022R per trade**,
+and it **passed the block-bootstrap null test (p = 0.00)** — the only strategy in this repo
+that has.
+
+**Challenge outcome (Topstep 50K, real rules):**
+
+| | |
+|---|---|
+| Pass rate | **39.2%** (zero-edge baseline under the same rules: 34.9%) |
+| Median time to pass | 7 days; 96% of attempts resolve within 15 days |
+| Median time to fail | 5 days — failures arrive before passes |
+| EV per attempt | **+$502** = 0.397 x ($1,513 − $149) − $39 |
+
+**Bankroll (sequential attempts, stop at the first pass):**
+
+| Attempts | Max outlay | P(≥1 pass) | P(end in profit) | Median | Mean |
+|---|---|---|---|---|---|
+| 1 | $188 | 39.1% | 19.0% | −$39 | +$525 |
+| 3 | $266 | 77.6% | 37.7% | −$117 | +$1,045 |
+| **5** | **$344** | **91.7%** | **44.6%** | −$188 | **+$1,235** |
+| 10 | $539 | 99.3% | 48.4% | −$188 | +$1,344 |
+
+**The number that matters most: 51% of funded accounts never pay out.** Passing is not being paid.
+Median payout is $0; the mean of $1,598 comes from a tail of ~$4,000 outcomes. Treat the outlay as
+spent money — the median result across 5 attempts is −$188.
+
+**Do not run copied accounts in parallel.** Identical trades at identical size produce identical
+equity curves: three copies pass or fail together at 39.2%, for three times the fees. Sequential
+attempts are independent; parallel copies are not.
+
+---
+
+
 Built from DeltaTrend Trading's framing — a challenge account is a convex payoff, so optimise the
 **risk geometry**, not the entry signal. Everything below assumes **no edge**, because three
 independent searches found none, and random entries measured −0.015R.

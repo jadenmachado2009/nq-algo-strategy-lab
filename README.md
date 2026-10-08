@@ -11,6 +11,22 @@ cheaply, before money is involved.
 
 ## Versions
 
+**[v4 — ORB: a measured edge, and what it's worth](https://github.com/jadenmachado2009/nq-algo-strategy-lab/releases/tag/v4)** ← current
+
+The first strategy here to pass its null test. Opening Range Breakout, long only, five opening
+windows, stop at the opposite side of the range, target at half the stop: **7,063 trades over 7.8
+years, 65.4% win rate, +0.022R per trade, p = 0.00 against block-bootstrapped noise**. Positive in
+6 of 8 years including 2022, when NQ fell 33%.
+
+Run against Topstep's real published rules: **39.2% pass rate** (zero-edge baseline 34.9%), median
+7 days to pass, **+$502 EV per attempt**. Across five sequential attempts: $344 at risk, 91.7%
+chance of passing one — but only a **44.6% chance of ending in profit**, because **51% of funded
+accounts never pay out**. Median outcome −$188, mean +$1,235.
+
+- Spec and bankroll table: [`research/PROP_PLAYBOOK.md`](research/PROP_PLAYBOOK.md)
+- Tools: [`research/orb.py`](research/orb.py), [`research/topstep.py`](research/topstep.py), [`research/video_model.py`](research/video_model.py), [`research/bankroll.py`](research/bankroll.py)
+
+
 **[v3 — prop convexity: risk geometry over edge](https://github.com/jadenmachado2009/nq-algo-strategy-lab/releases/tag/v3)** ← the useful one
 
 The only positive result here, and it doesn't need a trading edge. A real futures trailing
