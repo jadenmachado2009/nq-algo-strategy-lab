@@ -53,9 +53,16 @@ def orb_trades(d, window_min, rr, direction="both", min_range_pts=0.0):
         session = idx[(hm[idx] >= RTH_OPEN)]
         if len(session) < 10:
             continue
-        open_end = RTH_OPEN + (window_min // 60) * 100 + (window_min % 60)
-        rng_bars = session[hm[session] < open_end]
-        rest = session[hm[session] >= open_end]
+        # Work in MINUTES, not HHMM. The old form was
+        #     open_end = RTH_OPEN + (w // 60) * 100 + (w % 60)
+        # which for w = 35..55 produced 965..985 -- times that do not exist, so no
+        # extra bar was ever included and every one of those windows silently
+        # collapsed onto the 30-minute range. The canonical set (10,20,30,45,60)
+        # therefore contained a DUPLICATE: 45m was byte-identical to 30m.
+        open_min = (RTH_OPEN // 100) * 60 + (RTH_OPEN % 100) + window_min
+        sess_min = (hm[session] // 100) * 60 + (hm[session] % 100)
+        rng_bars = session[sess_min < open_min]
+        rest = session[sess_min >= open_min]
         if len(rng_bars) < 1 or len(rest) < 3:
             continue
         hi, lo = h[rng_bars].max(), l[rng_bars].min()
