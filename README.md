@@ -21,21 +21,15 @@ two of which were unfounded. Corrected:
 | | v4 | v5 |
 |---|---|---|
 | Out-of-sample edge | +0.011R | **+0.0316R** over ~2,100 trades |
-| Optimal risk | 0.75% | **0.50%** |
-| Pass rate | 39.2% | **43.9%** (39.0% with the daily lockout disabled) |
-| Median days to pass | 7 | **15** |
-| EV per attempt | +$502 | **+$632** |
-| 5 attempts, P(profit) | 44.6% | **73.4%** |
-| 5 attempts, median | −$188 | **+$969** |
+| Optimal risk | 0.75% | **1.00%** |
+| Pass rate | 39.2% | **41.7%** — and flat at ~40% at *every* risk level |
+| Median days to pass | 7 | **5** |
+| EV per attempt | +$502 | **+$648** |
+| Break-even pass rate | — | **2.9%** |
+| 5 attempts, P(profit) | 44.6% | **38.6%** |
 
-> **Patched 2026-10-12.** v5 as first published contained two further errors, found by
-> re-checking it: simulations assumed trades within a session were independent (they agree in
-> sign 67.5% of the time), and a time-arithmetic bug made windows 35–55 duplicates of the
-> 30-minute range. Corrected above. The pass rate survived; the **days-to-pass did not** —
-> v5 said 7, then 54, and the correct figure is 15. See
-> [`backtests/2026-10-12_simulation_correlation_fix.md`](backtests/2026-10-12_simulation_correlation_fix.md).
-
-**The median flips from negative to positive.** v4's headline conclusion was wrong.
+v4's conclusion — *"EV-positive, median-negative"* — turns out to be **right**, but for a different
+reason than it gave. The firm-mismatch bug it contained was real; so is the negative median.
 
 ORB's edge is **87.5% likely positive** on a day-clustered bootstrap — probably real, not
 established at 95%. See [why the numbers changed](#why-the-numbers-changed) below.
@@ -149,12 +143,36 @@ Honest caveat: with noise that size, power to *detect* real decay is poor. The c
 
 ### Topstep 50K economics
 
-Simulated by resampling whole sessions, so trades that share a price path stay correlated.
-The second column is the same run with Topstep's optional daily lockout disabled — the gap is
-how much of the result is the rule rather than the strategy.
+Simulated by resampling whole **sessions**, so trades sharing a price path stay correlated, and
+assuming **2 positions are in-flight** when the daily lockout fires — because a lockout stops you
+opening trades, it cannot close ones you already hold.
 
-| Risk | $/trade | Pass | Pass (no lockout) | Median days |
-|---|---|---|---|---|
+| Risk | $/trade | Pass | Median days | 1% worst day | Breaches $2k limit? |
+|---|---|---|---|---|---|
+| 0.50% | $250 | 39.3% | 14 | −$1,455 | no |
+| 0.75% | $375 | 39.9% | 8 | −$2,018 | yes |
+| **1.00%** | **$500** | **41.7%** | **5** | −$2,184 | yes |
+| 1.25% | $625 | 40.7% | 4 | −$2,653 | yes |
+
+**The pass rate is flat at ~40% at every risk level** — gambler's-ruin scale invariance. With a fixed
+edge, pass probability does not depend on bet size. Risk changes how *fast* you resolve, not
+*whether* you pass.
+
+### Sequential attempts at 1.00%
+
+| Tries | Spend | P(≥1 pass) | P(profit) | Median | Mean |
+|---|---|---|---|---|---|
+| 1 | $49 | 41.7% | 17.3% | −$49 | +$649 |
+| 3 | $94 | 80.2% | 33.1% | −$147 | +$1,240 |
+| **5** | **$109** | **93.2%** | **38.6%** | **−$198** | **+$1,447** |
+| 10 | $117 | 99.5% | 41.5% | −$198 | +$1,553 |
+
+**Positive EV, negative median.** Break-even is **2.9%** against an actual 41.7% — a 14× margin — but
+most single attempts lose the fee, because **58% of funded accounts never pay out**. The expectancy
+sits in the ~25% of runs reaching several thousand. This is a well-priced bet you will probably lose
+on any one try.
+
+---|---|---|---|---|
 | **0.50%** | $250 | **43.9%** | **39.0%** | **15** |
 | 0.75% | $375 | 49.8% | 39.6% | 8 |
 | 1.00% | $500 | 56.7% | 39.1% | 6 |
