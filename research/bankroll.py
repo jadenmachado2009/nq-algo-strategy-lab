@@ -41,7 +41,12 @@ def payout_distribution(pool, firm, risk_frac, seed=3):
 
 
 def main():
-    key = sys.argv[1] if len(sys.argv) > 1 else "apex_50k"
+    key = sys.argv[1] if len(sys.argv) > 1 else "topstep_50k"
+    # NOTE: this default was "apex_50k" until 2026-10-12. The v4 bankroll record is
+    # titled "ORB on Topstep 50K" but ran with Apex funded rules (payout threshold
+    # $1,000, funded DD $2,500) -> 51% never paid out, median $0. Topstep's real
+    # rules give 16.5% and a median of ~$1,400. That mismatch produced v4's
+    # "EV-positive, median-negative" conclusion, which was wrong.
     firm = FIRMS[key]
     pol = Policy(0.01, 2.0, 1.0, 1.0, 1)      # EV-best policy from geometry_search
     pool = r_synthetic((EDGE + 1.0) / (pol.rr + 1.0), pol.rr, 1.0, n=20_000, seed=5)

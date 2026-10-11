@@ -46,6 +46,9 @@ ACTIVATION = 149.0
 SPLIT = 0.90
 WIN_DAY = 150.0             # a "winning day" for payout eligibility
 WIN_DAYS_NEEDED = 5
+PAYOUT_CAP_FRAC = 0.50      # April 2026: payout <= 50% of balance
+PAYOUT_CAP_ABS = 2_000.0    #              and <= $2,000 on a 50K Standard account
+PAYOUT_MIN = 125.0          #              minimum request
 TRADING_DAYS_PER_MONTH = 21
 
 
@@ -109,10 +112,14 @@ def funded(pool, risk_frac, trades_per_day=1, max_days=250, seed=4):
         win_days += alive & (day_pnl >= WIN_DAY)
         eod_peak = np.maximum(eod_peak, np.where(alive, eq, eod_peak))
 
-        # withdraw once eligible and in profit; the drawdown line does not reset
-        can_pay = alive & (win_days >= WIN_DAYS_NEEDED) & (eq > 0)
-        paid += np.where(can_pay, eq * SPLIT, 0.0)
-        eq = np.where(can_pay, 0.0, eq)
+        # Withdraw once eligible. Topstep's April 2026 policy caps each Express
+        # Funded payout at 50% of balance with a $2,000 ceiling on a 50K Standard
+        # account, and a $125 minimum request. The drawdown line does not reset,
+        # so the cap also forces a cushion rather than emptying the account.
+        gross = np.minimum(eq * PAYOUT_CAP_FRAC, PAYOUT_CAP_ABS)
+        can_pay = alive & (win_days >= WIN_DAYS_NEEDED) & (gross >= PAYOUT_MIN)
+        paid += np.where(can_pay, gross * SPLIT, 0.0)
+        eq = np.where(can_pay, eq - gross, eq)
     return paid
 
 
