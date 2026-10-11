@@ -3,104 +3,194 @@
 A testing pipeline for futures strategies on NQ/MNQ, built around one rule: **a strategy is assumed
 worthless until evidence says otherwise, and the evidence has to survive a test designed to fail it.**
 
-So far the lab has retired one strategy, failed to validate a second, and rejected its own best
-search result. Those are the results, not a setback — the point of the pipeline is to produce them
-cheaply, before money is involved.
+The lab has retired one strategy, failed to validate a second, rejected its own best search result
+three times, and — in v5 — found four errors in its own published numbers. Those are the results.
+The point of the pipeline is to produce them cheaply, before money is involved.
 
 ---
 
 ## Versions
 
-**[v4 — ORB: a measured edge, and what it's worth](https://github.com/jadenmachado2009/nq-algo-strategy-lab/releases/tag/v4)** ← current
+**[v5 — four corrections, and the number that actually matters](https://github.com/jadenmachado2009/nq-algo-strategy-lab/releases/tag/v5)** ← current
 
-The first strategy here to pass its null test. Opening Range Breakout, long only, five opening
-windows, stop at the opposite side of the range, target at half the stop: **7,063 trades over 7.8
-years, 65.4% win rate, +0.022R per trade, p = 0.00 against block-bootstrapped noise**. Positive in
-6 of 8 years including 2022, when NQ fell 33%.
+v4 reported ORB as validated at **+0.022R** with a **39.2%** pass rate and concluded the economics
+were *"EV-positive, median-negative — a lottery, not an income."* Re-verifying every input on
+freshly downloaded, reproducible data found **four errors**, two of which were too pessimistic and
+two of which were unfounded. Corrected:
 
-Run against Topstep's real published rules: **39.2% pass rate** (zero-edge baseline 34.9%), median
-7 days to pass, **+$502 EV per attempt**. Across five sequential attempts: $344 at risk, 91.7%
-chance of passing one — but only a **44.6% chance of ending in profit**, because **51% of funded
-accounts never pay out**. Median outcome −$188, mean +$1,235.
+| | v4 | v5 |
+|---|---|---|
+| Out-of-sample edge | +0.011R | **+0.0297R** over 2,105 trades |
+| Optimal risk | 0.75% | **0.50%** |
+| Pass rate | 39.2% | **43.5%** (50.5% on the OOS edge, 25.2% zero-edge floor) |
+| EV per attempt | +$502 | **+$632** |
+| 5 attempts, P(profit) | 44.6% | **73.4%** |
+| 5 attempts, median | −$188 | **+$969** |
 
-- Spec and bankroll table: [`research/PROP_PLAYBOOK.md`](research/PROP_PLAYBOOK.md)
-- **Runnable strategy:** [`strategies/ORB_MNQ.pine`](strategies/ORB_MNQ.pine) — TradingView version of the spec (compiles clean on v6)
-- Tools: [`research/orb.py`](research/orb.py), [`research/topstep.py`](research/topstep.py), [`research/video_model.py`](research/video_model.py), [`research/bankroll.py`](research/bankroll.py)
+**The median flips from negative to positive.** v4's headline conclusion was wrong.
 
+ORB's edge is **87.5% likely positive** on a day-clustered bootstrap — probably real, not
+established at 95%. See [why the numbers changed](#why-the-numbers-changed) below.
 
-**[v3 — prop convexity: risk geometry over edge](https://github.com/jadenmachado2009/nq-algo-strategy-lab/releases/tag/v3)** ← the useful one
+<details>
+<summary><b>v4 — ORB: a measured edge, and what it's worth</b></summary>
 
-The only positive result here, and it doesn't need a trading edge. A real futures trailing
-drawdown freezes once you're far enough ahead (`dd_line = min(peak − D, cap)`), so variance is
-expensive before the freeze and cheap after it. Trading small then escalating is worth +$49–73 per
-attempt over any fixed-risk plan. **~30% pass rate, +$146 to +$408 EV per attempt on a zero-edge
-strategy**, still positive down to a true edge of −0.10R.
+The first strategy here to pass its null test. Superseded by v5, which corrects its pass rate, its
+EV, its out-of-sample edge, and its conclusion. The strategy spec itself is unchanged.
+</details>
 
-- Spec: [`research/PROP_PLAYBOOK.md`](research/PROP_PLAYBOOK.md)
-- Tools: [`research/geometry_search.py`](research/geometry_search.py), [`research/bankroll.py`](research/bankroll.py), [`research/prop_mc.py`](research/prop_mc.py)
-- Reality check: one attempt is a losing bet 78% of the time; ~10 attempts ($1,670) for an 84% chance of profit
+<details>
+<summary><b>v3 — prop convexity: risk geometry over edge</b></summary>
 
-**[v2 — evidence-first validation suite](https://github.com/jadenmachado2009/nq-algo-strategy-lab/releases/tag/v2)**
+A real futures trailing drawdown freezes once you're far enough ahead (`dd_line = min(peak − D, cap)`),
+so variance is expensive before the freeze and cheap after it. Trading small then escalating is worth
++$49–73 per attempt over any fixed-risk plan. Still stands.
+</details>
 
-The searches that found nothing, and the machinery that proved it: QuantConnect backtests, the
-IBKR paper bot, the 450-combo search with its null test, and `research/MATH.md`.
+<details>
+<summary><b>v2 — evidence-first validation suite</b></summary>
+
+The searches that found nothing, and the machinery that proved it: QuantConnect backtests, the IBKR
+paper bot, the 450-combo search with its null test, and `research/MATH.md`.
+</details>
 
 ---
 
-## Results so far
+## Why the numbers changed
 
-| Strategy | Sample | In-sample | Out-of-sample | Verdict |
+Four errors, found by re-verifying every input from scratch. Each is recorded in `backtests/`.
+
+### 1. The wrong firm's payout rules (the big one)
+
+`backtests/2026-10-09_portfolio_bankroll.md` is titled *"ORB on Topstep 50K"*. But `bankroll.py`
+defaults to `apex_50k`, so it computed **Topstep's** pass rate and then applied **Apex's**
+funded-account rules to it.
+
+```
+Apex profile:     payout threshold $1,000, funded DD $2,500  ->  51% never pay out, median $0
+Topstep profile:  5 winning days >= $150, DD locks at breakeven -> 16.5% never pay out, median $1,499
+```
+
+That single mismatch produced the "median −$188, a lottery not an income" conclusion. Under
+Topstep's actual published rules the median at five attempts is **+$969**.
+
+### 2. The wrong out-of-sample number
+
+v4 quoted **+0.011R** as ORB's out-of-sample edge. That is the *single best config* — 60m long alone,
+379 trades. The spec the analysis actually uses is **five windows pooled**, whose out-of-sample edge
+is **+0.0297R over 2,105 trades** — higher than the full-period +0.0227R.
+
+The edge did not decay out of sample. Two different measurements were being compared.
+
+### 3. A data-quality claim that was never tested
+
+From 2026-10-10 this repo asserted that Dukascopy's NQ feed was unfit because it tracks the cash
+index, whose constituents open staggered and make the first prints stale — "exactly where ORB looks."
+Plausible, repeated in three files, never measured.
+
+Measured against 60 days of real `NQ=F` over 38 shared sessions: **width ratio 0.97–1.00, width
+correlation 0.997+, signal agreement 87–89% at every window from 10m to 60m.** The hypothesis
+predicts the distortion is worst at the shortest window. There is no trend at all. The effect is
+absent, and `IDX_AMERICA_E_NQ_100` has **0.9840** return correlation with real NQ futures — the
+highest-fidelity free source tested, better than gold.
+
+*(Not to be confused with `US_TECH_US_USD`, a US stock quoted around $72, which scores 0.0077. That
+one is a genuine trap and is documented in `research/fetch_data.py`.)*
+
+### 4. The null test's bar is lower than it reads
+
+ORB passed its null test on gold (p = 0.000) **and lost money out of sample**. Both are true because
+they ask different questions. All 15 noise runs came back negative (mean −0.061R) because noise pays
+the toll and gold's toll is heavy — so the bar to clear was **−0.027R**. A mediocre +0.011R clears it.
+
+**A null test asks "better than noise after costs", not "profitable."** On a high-cost instrument
+that bar sits below zero. This applies retroactively to NQ's p = 0.00, where noise averaged −0.031R.
+It rules out one failure mode — data mining — and establishes nothing else.
+
+---
+
+## ORB — the current state
+
+Opening Range Breakout on NQ. Range = first N minutes after 09:30 NY; enter on the first 5m close
+beyond it at the *next* bar's open; stop at the opposite side; target = 0.5 × the stop; long only;
+one trade per day per window; flat by the close. Five windows (10/20/30/45/60) run in parallel.
+
+| | |
+|---|---|
+| Full period | 7,072 trades, 65.5% WR, **+0.0227R** |
+| Out-of-sample | 2,105 trades, 65.1% WR, **+0.0297R** |
+| Day-clustered 95% CI | **[−0.0202, +0.0768]**, P(edge > 0) = **87.5%** |
+| Null test | p = 0.00 — see correction 4 for what that does and doesn't mean |
+
+**Direction selection survives out-of-sample.** Long-only was chosen in-sample; on unseen data long
+gives +0.0297R against short's +0.0052R and both at +0.0035R.
+
+### Year by year
+
+| 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 |
+|---|---|---|---|---|---|---|---|
+| +0.032 | **−0.036** | +0.039 | +0.040 | +0.034 | +0.030 | +0.060 | **−0.018** |
+
+Two negative years. **2020 was twice as bad as 2026 and the edge recovered completely** (+0.039,
++0.040, +0.034 in the three years after). A permutation test on whether 2026 differs from earlier
+years gives **p = 0.184** — not distinguishable from an ordinary bad draw. Year-to-year SD is
+0.0302R, so a negative year is a normal feature of this series.
+
+Honest caveat: with noise that size, power to *detect* real decay is poor. The correct statement is
+"no detectable decay", not "proven stable".
+
+### Topstep 50K economics
+
+| Risk | $/trade | Pass | Days | EV/attempt |
 |---|---|---|---|---|
-| **CBE** — fade shrinking-body runs | ~1,500 trades | PF 0.90 | **PF 0.80** | **Retired.** Loses in every window tested (2019–23, 2024–26, and a 10-week forward replay at PF 0.89). |
-| **PB** — ICT FVG/IFVG model | 46 trades over 7 years | PF 0.87 | PF 1.83 | **Undecided, unusable.** ~6 trades/year. The out-of-sample 1.83 is noise at n=17, not an edge that appeared in 2024. |
-| **450-combo search** | 2.4 years, hourly | best **+0.227R** | — | **Nothing found.** See below. |
+| **0.50%** | $250 | **43.5%** | 54 | **+$632** |
+| 0.75% | $375 | 41.0% | 29 | +$467 |
+| 1.00% | $500 | 38.9% | 18 | +$421 |
+| 2.00% | $1,000 | 36.2% | 7 | +$440 |
 
-### The search result is the interesting one
+Break-even pass rate is **8.2%**. Sequential attempts at 0.50%, stopping after the first pass:
 
-A bounded grid of 450 strategies (trend filter × entry trigger × session × volatility filter ×
-exit) produced a top combo at +0.227R expectancy, profit factor 1.42 over 154 trades. That looks
-like a discovery.
+| Tries | Spend | P(≥1 pass) | P(profit) | Median | Mean |
+|---|---|---|---|---|---|
+| 1 | $147 | 43.5% | 35.0% | −$147 | +$637 |
+| 3 | $277 | 82.0% | 64.7% | +$778 | +$1,197 |
+| **5** | **$318** | **94.2%** | **73.4%** | **+$969** | **+$1,373** |
+| 10 | $338 | 99.7% | 76.7% | +$1,022 | +$1,454 |
 
-It isn't. Running the identical grid over 30 block-bootstrapped **noise** series — same volatility
-clustering, no real structure — the best combo on noise averaged **+0.194R** and reached +0.330R.
-
-```
-best on REAL data       +0.227R
-best on noise (mean)    +0.194R
-best on noise (max)     +0.330R
-p-value                  0.27     -> indistinguishable from data mining
-```
-
-Searching 450 strategies and keeping the winner is a *maximum of 450 random variables*; it is
-positive even when nothing works. Without the null test, that PF 1.42 combo would have been
-reported as a strategy.
-
-### Prop-account maths: the real constraint is sample size
-
-A prop challenge is a convex payoff — downside capped at the fee, upside uncapped — so a strategy
-doesn't need to be profitable to make the account +EV. Monte Carlo over 20,000 paths per setting
-(trailing drawdown, daily loss limit, minimum trading days, activation fee, funded phase):
-
-| True edge per trade | Best risk/trade | Pass rate | Net EV per attempt |
-|---|---|---|---|
-| −0.20R | 1.50% | 6.1% | −$110 |
-| −0.10R | 0.75% | 14.4% | −$41 |
-| **−0.075R** | — | — | **break-even** |
-| 0.00R | 0.75% | 24.3% | **+$180** |
-| +0.05R | 0.75% | 30.2% | **+$373** |
-
-Two findings:
-
-1. **Risk size dominates edge.** At 5% risk the drawdown limit is 0.8 trades away — one loss ends
-   the attempt regardless of how good the strategy is. The optimum sits near 0.75%.
-2. **You can't tell which side of the line you're on.** Resolving −0.075R from 0 at 95% confidence
-   needs **~1,340 trades** (σ ≈ 1.4R). The search winners had 154–320; PB had 46. Only CBE had
-   enough — and it measured −0.05R in-sample / −0.11R out-of-sample, correctly below the line.
-
-Full derivations, including the gambler's-ruin argument for the optimal risk fraction:
-**[`research/MATH.md`](research/MATH.md)**.
+Note the trade-off: 0.50% risk means roughly **54 days to pass**, so each attempt is a two-to-three
+month commitment, not a week.
 
 ---
+
+## What the searches found: nothing, three times
+
+| Study | Instrument | Grid | Best real | Noise mean | p |
+|---|---|---|---|---|---|
+| NQ hourly | 450 | 450 | +0.227R | +0.194R | 0.27 |
+| NQ 5m | 450 | — | — | — | 0.72 |
+| Gold 5m | 360 | +0.019R | **+0.063R** | | **0.733** |
+
+On gold, **noise beat the real data**. Searching 450 strategies and keeping the winner is a *maximum
+of 450 random variables*; it is positive even when nothing works. Without the null test, a PF 1.42
+combo would have been reported as a strategy.
+
+ORB was not found by a grid search. It was built from a published specification and then tested,
+which is the only reason it survived.
+
+## Data
+
+All free, all reproducible, fidelity **measured** before use via `research/fetch_data.py`:
+
+| Source | Trades as | 5m return corr | Bar-range ratio |
+|---|---|---|---|
+| `IDX_AMERICA_E_NQ_100` | NQ / MNQ | **0.9840** | 0.977 |
+| `FX_METALS_XAU_USD` | GC / MGC | 0.9835 | 0.996 |
+| `FX_MAJORS_GBP_USD` | 6B | 0.9679 | 1.140 |
+| `US_TECH_US_USD` | — | **0.0077** | 0.000 ← trap, a $72 stock |
+
+```bash
+.venv/bin/python research/fetch_data.py nq 2019 2026
+```
 
 ## Layout
 
@@ -109,62 +199,63 @@ strategies/     Pine Script signal logic
 quantconnect/   LEAN ports — multi-year IS/OOS backtests on MNQ continuous contracts
 execution/      IBKR paper-trading bot (paper-only by construction) + forward replay
 ninjatrader/    NinjaScript port for free sim paper trading (Windows)
-research/       Strategy search with null test, prop-account Monte Carlo, MATH.md
-backtests/      One file per run, never overwritten
+research/       Data fetcher, strategy search with null test, prop-account Monte Carlo, MATH.md
+backtests/      One file per run, never overwritten — including the corrections
 ```
 
-One strategy file feeds every stage. `execution/ibkr_paper/pb_engine.py` is imported unchanged by
-the QuantConnect backtest, the forward replay and the live bot, so the three cannot drift apart —
-a backtest that doesn't match live behaviour is the most common way these projects lie to you.
+One strategy file feeds every stage, so backtest, replay and live bot cannot drift apart.
 
 ## Pipeline
 
-1. **Forward replay** (`research`-grade, 2 minutes, free) — replay the bot's exact logic over ~60
-   days of free data. Cheapest possible kill test.
-2. **QuantConnect IS/OOS** — tune on 2019–2023 only, then run 2024–2026 once, untouched.
-3. **Record in `backtests/`** using `TEMPLATE.md`, including the parameters and the failures.
-4. **Paper trade** 4–8 weeks on the IBKR bot — only for strategies that cleared step 2.
-5. **Live** — nothing has reached this step.
-
-Full setup instructions, including the free routes: **[`NQ_TESTING.md`](NQ_TESTING.md)**.
+1. **Fetch and verify fidelity** — `fetch_data.py`, measured against the real futures
+2. **Forward replay** — ~60 days of free data, cheapest kill test
+3. **IS/OOS** — tune on the first 70% only, run the rest once, untouched
+4. **Record in `backtests/`** including the failures and the corrections
+5. **Paper trade** 4–8 weeks — only for strategies that cleared step 3
+6. **Live** — nothing has reached this step
 
 ## Safety
 
-The paper bot is built so that a configuration mistake cannot place a real order:
+The paper bot cannot place a real order by misconfiguration:
 
-- Refuses any IBKR port that isn't paper (7497/4002), and any account not prefixed `DU`.
-- Stop and target are submitted as an IB bracket attached to the entry, so a crashed process or a
-  dropped connection leaves the position protected at the broker.
-- Daily loss limit, max trades per day, one position at a time, session window, end-of-day flatten.
-- Kill switch endpoint that cancels, flattens and blocks re-entry until restart.
-- 27 offline tests (`python -m unittest discover -s tests`) covering signal logic, sizing and every
-  risk rule.
+- Refuses any IBKR port that isn't paper (7497/4002), and any account not prefixed `DU`
+- Stop and target submitted as an IB bracket attached to the entry, so a crashed process leaves the
+  position protected at the broker
+- Daily loss limit, max trades per day, one position at a time, session window, EOD flatten
+- Kill switch that cancels, flattens and blocks re-entry until restart
+- 27 offline tests covering signal logic, sizing and every risk rule
 
 ## Quality bar
 
-A strategy is validated only when all of these hold:
-
-- [ ] Commission and slippage modelled (futures: cash per contract + 1–2 ticks)
-- [ ] Sample > 100 trades — and > 1,340 if the prop-EV threshold is the decision
-- [ ] Tested across trending *and* ranging regimes
-- [ ] Out-of-sample run once, untouched; reject if it degrades > 30%
+- [ ] Commission and slippage modelled
+- [ ] **Data fidelity measured against the real contract before the study**
+- [ ] Sample > 100 trades
+- [ ] Out-of-sample run once, untouched
+- [ ] **Confidence intervals clustered by session, not by trade**
+- [ ] If selected from a search: beats a block-bootstrap null at p < 0.05 — *and note what that bar
+      actually is on a high-cost instrument*
 - [ ] No single trade contributes > 20% of net profit
-- [ ] Profit factor holds when key parameters move ±20%
-- [ ] If selected from a search: beats a block-bootstrap null at p < 0.05
-
-Targets: PF > 1.5, win rate > 50%, max drawdown < 15%, expectancy > 0.3R.
 
 ## Strategy inventory
 
 | File | Concept | Status |
 |---|---|---|
-| `ORB_MNQ.pine` | Opening range breakout, long only, 0.5:1 bracket | **Validated** — +0.022R over 7,063 trades, null test p = 0.00 |
-| `CBE_v1.pine` | Candle body exhaustion — fade shrinking bodies | **Retired on NQ** (PF 0.80 OOS, 2026-09-17) |
-| `PB_StupidSimple_v1.pine` | ICT — HTF FVG context + 5m FVG retrace + IFVG trigger | Audit bugs fixed in `pb_engine.py`; **too few trades to judge** (~6/yr) |
-| `htf_bias_strategy.pine` | 4H bias + 15m breakout | **Broken** — compares a bar's close to its own high; can never trade. See `AUDIT.md` |
-| `patty_swing_strategy.pine` | Swing model | Not yet audited |
+| `ORB_MNQ.pine` | Opening range breakout, long only, 0.5:1 | **Probably real** — +0.0297R OOS, 87.5% likely positive. Not paper traded. |
+| `CBE_v1.pine` | Fade shrinking candle bodies | **Retired** (PF 0.80 OOS) |
+| `PB_StupidSimple_v1.pine` | ICT HTF FVG + 5m IFVG | **Too few trades to judge** (~6/yr) |
+| `htf_bias_strategy.pine` | 4H bias + 15m breakout | **Broken** — compares a bar's close to its own high. See `AUDIT.md` |
+
+## The open question
+
+ORB has never been paper traded. Its edge is **+0.03R**, and this repo's own measurement says
+**±0.6R of exit noise costs 6 points of pass rate**. An edge that thin has very little room before
+real fills erase it.
+
+Every remaining uncertainty — whether 2026 is decay or noise, whether simulated fills survive a live
+book — is answered by forward data and by nothing else. More history will not settle either.
 
 ## Notes
 
-Not investment advice, and nothing here is profitable — that is the current finding. Code is
-provided as a record of method.
+Not investment advice. The positive expectancy here comes from the convex payoff structure of a prop
+evaluation, not from a large or reliable trading edge. Code is provided as a record of method,
+including the parts where the method caught its own errors.
