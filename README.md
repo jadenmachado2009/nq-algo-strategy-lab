@@ -20,12 +20,20 @@ two of which were unfounded. Corrected:
 
 | | v4 | v5 |
 |---|---|---|
-| Out-of-sample edge | +0.011R | **+0.0297R** over 2,105 trades |
+| Out-of-sample edge | +0.011R | **+0.0316R** over ~2,100 trades |
 | Optimal risk | 0.75% | **0.50%** |
-| Pass rate | 39.2% | **43.5%** (50.5% on the OOS edge, 25.2% zero-edge floor) |
+| Pass rate | 39.2% | **43.9%** (39.0% with the daily lockout disabled) |
+| Median days to pass | 7 | **15** |
 | EV per attempt | +$502 | **+$632** |
 | 5 attempts, P(profit) | 44.6% | **73.4%** |
 | 5 attempts, median | −$188 | **+$969** |
+
+> **Patched 2026-10-12.** v5 as first published contained two further errors, found by
+> re-checking it: simulations assumed trades within a session were independent (they agree in
+> sign 67.5% of the time), and a time-arithmetic bug made windows 35–55 duplicates of the
+> 30-minute range. Corrected above. The pass rate survived; the **days-to-pass did not** —
+> v5 said 7, then 54, and the correct figure is 15. See
+> [`backtests/2026-10-12_simulation_correlation_fix.md`](backtests/2026-10-12_simulation_correlation_fix.md).
 
 **The median flips from negative to positive.** v4's headline conclusion was wrong.
 
@@ -117,8 +125,8 @@ one trade per day per window; flat by the close. Five windows (10/20/30/45/60) r
 
 | | |
 |---|---|
-| Full period | 7,072 trades, 65.5% WR, **+0.0227R** |
-| Out-of-sample | 2,105 trades, 65.1% WR, **+0.0297R** |
+| Full period | 6,995 trades, 65.2% WR, **+0.0246R** |
+| Out-of-sample | ~2,100 trades, **+0.0316R** |
 | Day-clustered 95% CI | **[−0.0202, +0.0768]**, P(edge > 0) = **87.5%** |
 | Null test | p = 0.00 — see correction 4 for what that does and doesn't mean |
 
@@ -141,12 +149,22 @@ Honest caveat: with noise that size, power to *detect* real decay is poor. The c
 
 ### Topstep 50K economics
 
-| Risk | $/trade | Pass | Days | EV/attempt |
+Simulated by resampling whole sessions, so trades that share a price path stay correlated.
+The second column is the same run with Topstep's optional daily lockout disabled — the gap is
+how much of the result is the rule rather than the strategy.
+
+| Risk | $/trade | Pass | Pass (no lockout) | Median days |
 |---|---|---|---|---|
-| **0.50%** | $250 | **43.5%** | 54 | **+$632** |
-| 0.75% | $375 | 41.0% | 29 | +$467 |
-| 1.00% | $500 | 38.9% | 18 | +$421 |
-| 2.00% | $1,000 | 36.2% | 7 | +$440 |
+| **0.50%** | $250 | **43.9%** | **39.0%** | **15** |
+| 0.75% | $375 | 49.8% | 39.6% | 8 |
+| 1.00% | $500 | 56.7% | 39.1% | 6 |
+| 1.50% | $750 | 54.3% | 36.4% | 5 |
+
+Higher risk looks better only because the daily lockout clips losing days while winning days run.
+**At 0.50% the result barely depends on it (43.9% vs 39.0%), which is why that is the recommended
+setting.** Adding more opening-range windows amplifies the same effect — 11 windows appears to give
+61.8%, but 21.8 points of that is the lockout, and with that many overlapping positions it cannot
+intervene between simultaneous losses. Rejected for that reason.
 
 Break-even pass rate is **8.2%**. Sequential attempts at 0.50%, stopping after the first pass:
 
