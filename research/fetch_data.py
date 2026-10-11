@@ -1,35 +1,37 @@
-"""Download free Dukascopy spot data for instruments tradeable on a prop account.
+"""Download free Dukascopy data for instruments tradeable on a prop account.
 
-WHY THIS EXISTS
----------------
-The NQ study was run on Dukascopy's "US_TECH" feed, which turned out to track the
-CASH Nasdaq-100 index, not the futures contract (+5 pts vs ^NDX, -97 vs NQ=F).
-Basis and roll do not affect an intraday strategy, but the cash index is computed
-from 100 stocks that open STAGGERED over the first minutes of the session, so its
-opening prints are stale -- precisely where an opening-range strategy looks.
+FIDELITY IS MEASURED, NOT ASSUMED
+---------------------------------
+Every instrument here is checked against the real futures contract before use:
+5-minute return correlation and bar-range ratio over ~55 days of Yahoo futures
+data. Measured 2026-10-12:
 
-The fix is not a better index feed. It is to research instruments whose free data
-is genuinely faithful to the contract you would trade.
+| source                   | -> future | 5m return corr | bar-range ratio |
+|--------------------------|-----------|----------------|-----------------|
+| INSTRUMENT_IDX_AMERICA_E_NQ_100 | NQ |    0.9840      |     0.977       |
+| INSTRUMENT_FX_METALS_XAU_USD    | GC |    0.9835      |     0.996       |
+| INSTRUMENT_FX_MAJORS_GBP_USD    | 6B |    0.9679      |     1.140       |
+| INSTRUMENT_FX_MAJORS_EUR_USD    | 6E |    0.9673      |     1.050       |
+| INSTRUMENT_US_TECH_US_USD       | NQ |    0.0077      |     0.000       |
 
-MEASURED FIDELITY (5m bars, ~55 days, vs the real futures on Yahoo)
+The last row is the trap. `US_TECH` is a US-listed stock quoted around $72, not
+an index -- it is what the first NQ study accidentally used, making every
+strategy look catastrophic. `IDX_AMERICA_E_NQ_100` is the real Nasdaq-100 and
+is the HIGHEST-fidelity source in this table.
 
-| spot    -> future | 5m return corr | bar-range ratio |
-|---------|----------|----------------|-----------------|
-| XAUUSD  -> GC      | 0.9835         | 0.996           |
-| GBPUSD  -> 6B      | 0.9679         | 1.140           |
-| EURUSD  -> 6E      | 0.9673         | 1.050           |
+NOTE ON A CORRECTED CLAIM: an earlier version of this file argued that
+cash-index data misstates the opening range, because the index is built from
+100 constituents that open staggered. That was measured on 2026-10-12 against
+38 sessions of real NQ=F and found to be FALSE -- width ratio 0.97-1.00 and
+signal agreement 87-89% at every window from 10m to 60m, with no trend toward
+the short windows the hypothesis predicted. See
+backtests/2026-10-12_cash_vs_futures_ORB.md. Free NQ data is fine.
 
-Gold wins: its bars are effectively the futures' bars. GBP spot bars run 14%
-wider than the futures', which would show stops being hit more often in a
-backtest than in reality.
+GBP spot bars run 14% wider than the futures', which would fake extra stop-outs.
+That is the only entry here with a real fidelity problem.
 
-Spot FX and spot gold trade continuously with no opening auction, so there is
-nothing to go stale. They also arbitrage against their futures in ONE trade,
-unlike an index, which needs all 100 constituents -- which is why they track so
-much more tightly.
-
+    .venv/bin/python research/fetch_data.py nq   2019 2026
     .venv/bin/python research/fetch_data.py gold 2019 2026
-    .venv/bin/python research/fetch_data.py eurusd 2019 2026
 """
 
 import sys
@@ -38,6 +40,7 @@ from datetime import datetime
 from pathlib import Path
 
 INSTRUMENTS = {
+    "nq":     ("INSTRUMENT_IDX_AMERICA_E_NQ_100", "nq", "NQ / MNQ"),
     "gold":   ("INSTRUMENT_FX_METALS_XAU_USD", "xauusd", "GC / MGC"),
     "silver": ("INSTRUMENT_FX_METALS_XAG_USD", "xagusd", "SI / SIL"),
     "eurusd": ("INSTRUMENT_FX_MAJORS_EUR_USD", "eurusd", "6E / M6E"),
