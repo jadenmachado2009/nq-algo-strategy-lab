@@ -154,7 +154,15 @@ moment the daily lockout fired. No assumed parameters — the overlap is read fr
 | 1.00% | $500 | 40.2% | 5 | −$2,626 | 39.1% |
 | 1.25% | $625 | 40.3% | 4 | −$3,273 | 39.2% |
 
-**Pass rate is flat at ~40% at every risk level** (gambler's-ruin scale invariance), and **the daily
+For reference, the **zero-edge baseline under these exact rules is 31.9%**, not the textbook
+`D/(G+D)` = 40% — that value assumes a *static* floor, and Topstep's trails and locks at breakeven.
+ORB's +0.0246R is therefore worth **+7.2 points** over a coin flip, and the model is monotonic in
+edge (18.1% at −0.05R, 31.9% at 0, 46.7% at +0.05R, 80.9% at +0.20R — see
+[`backtests/2026-10-13_edge_sensitivity.md`](backtests/2026-10-13_edge_sensitivity.md)).
+
+Note that the edge is worth **+7.2 points at 0.50% risk but only +4.1 at 1.00%** — larger bets raise
+the zero-edge floor through variance alone while compressing what skill adds. With a small edge the
+risk dial barely matters; with a real edge, smaller is clearly better. **The daily
 lockout is worth essentially nothing** — 40.2% against a 39.1% floor. By the time it fires your
 positions are already open, and a lockout cannot close them. Risk changes how *fast* you resolve and
 how bad your worst day is, not *whether* you pass.
