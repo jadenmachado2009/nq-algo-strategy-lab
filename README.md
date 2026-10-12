@@ -21,12 +21,12 @@ two of which were unfounded. Corrected:
 | | v4 | v5 |
 |---|---|---|
 | Out-of-sample edge | +0.011R | **+0.0316R** over ~2,100 trades |
-| Optimal risk | 0.75% | **1.00%** |
-| Pass rate | 39.2% | **41.7%** — and flat at ~40% at *every* risk level |
-| Median days to pass | 7 | **5** |
-| EV per attempt | +$502 | **+$648** |
-| Break-even pass rate | — | **2.9%** |
-| 5 attempts, P(profit) | 44.6% | **38.6%** |
+| Optimal risk | 0.75% | **0.50%** |
+| Pass rate | 39.2% | **39.1%** — flat at ~40% at *every* risk level |
+| Median days to pass | 7 | **14** |
+| EV per attempt | +$502 | **+$466** |
+| Break-even pass rate | — | **3.7%** |
+| 5 attempts, P(profit) | 44.6% | **56.3%** |
 
 v4's conclusion — *"EV-positive, median-negative"* — turns out to be **right**, but for a different
 reason than it gave. The firm-mismatch bug it contained was real; so is the negative median.
@@ -143,12 +143,38 @@ Honest caveat: with noise that size, power to *detect* real decay is poor. The c
 
 ### Topstep 50K economics
 
-Simulated by resampling whole **sessions**, so trades sharing a price path stay correlated, and
-assuming **2 positions are in-flight** when the daily lockout fires — because a lockout stops you
-opening trades, it cannot close ones you already hold.
+Each session is replayed in true **exit order**, with a leg taken only if its entry preceded the
+moment the daily lockout fired. No assumed parameters — the overlap is read from the data (measured:
+1.36 positions in-flight on average when the limit is hit, 3.83 open simultaneously at peak).
 
-| Risk | $/trade | Pass | Median days | 1% worst day | Breaches $2k limit? |
+| Risk | $/trade | Pass | Median days | 1% worst day | Floor (no lockout) |
 |---|---|---|---|---|---|
+| **0.50%** | **$250** | **39.4%** | **14** | **−$1,455** | 39.0% |
+| 0.75% | $375 | 40.4% | 8 | −$2,018 | 39.6% |
+| 1.00% | $500 | 40.2% | 5 | −$2,626 | 39.1% |
+| 1.25% | $625 | 40.3% | 4 | −$3,273 | 39.2% |
+
+**Pass rate is flat at ~40% at every risk level** (gambler's-ruin scale invariance), and **the daily
+lockout is worth essentially nothing** — 40.2% against a 39.1% floor. By the time it fires your
+positions are already open, and a lockout cannot close them. Risk changes how *fast* you resolve and
+how bad your worst day is, not *whether* you pass.
+
+### Sequential attempts at 0.50%
+
+| Tries | Spend | P(≥1 pass) | P(profit) | Median | Mean |
+|---|---|---|---|---|---|
+| 1 | $49 | 39.1% | 24.5% | −$49 | +$468 |
+| 3 | $97 | 77.4% | 47.9% | −$147 | +$924 |
+| **5** | **$115** | **91.6%** | **56.3%** | **+$461** | **+$1,085** |
+| 10 | $125 | 99.3% | 61.0% | +$695 | +$1,187 |
+
+**0.50% is chosen over faster settings** because pass rate is identical across risk, so the decision
+is made downstream: only **36.7%** of funded accounts never pay out at 0.50% against **60.3%** at
+1.00%, which flips the five-attempt median from −$198 to **+$461**. It is also the only setting whose
+worst day (−$1,455) stays inside the $2,000 limit. 1.00% has a higher *mean* (+$584) and a worse
+*median* — for a small bankroll the median is what matters.
+
+---|---|---|---|---|---|
 | 0.50% | $250 | 39.3% | 14 | −$1,455 | no |
 | 0.75% | $375 | 39.9% | 8 | −$2,018 | yes |
 | **1.00%** | **$500** | **41.7%** | **5** | −$2,184 | yes |
