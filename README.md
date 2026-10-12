@@ -9,6 +9,42 @@ The point of the pipeline is to produce them cheaply, before money is involved.
 
 ---
 
+## The current spec
+
+**ORB on NQ — 5 windows (10/20/30/45/60), long only, 0.5:1 bracket.**
+**Challenge at 1.25% risk. Funded account at 0.30%.** Five sequential attempts, stop after the first pass.
+
+| | |
+|---|---|
+| Median days to pass | **5** |
+| P(≥1 pass in 5 attempts) | **92.9%** |
+| Total spend | **$111** |
+| **P(end in profit)** | **73.9%** |
+| **Median outcome** | **+$1,068** |
+| Mean outcome | +$1,419 |
+| p10 / p90 | −$245 / +$3,741 |
+
+The two phases reward **opposite** things, and nothing forces them to use the same size. The
+challenge rewards speed — pass rate is scale-invariant, so betting larger costs nothing in
+probability while collapsing 29 days to 5. The funded account rewards survival — the drawdown locks
+at breakeven, so small size keeps you alive to collect repeated payouts (17.4% never pay at 0.30%
+against 60.2% at 1.25%).
+
+Every earlier analysis swept a single risk number across both phases and so never found this.
+
+| | 0.50% throughout | 1.25% throughout | **decoupled** |
+|---|---|---|---|
+| days to pass | 29 | 5 | **5** |
+| spend | $215 | $111 | **$111** |
+| P(profit) | 66.5% | 37.0% | **73.9%** |
+| median | +$836 | −$198 | **+$1,068** |
+
+Full derivation: [`backtests/2026-10-13_decoupled_risk_spec.md`](backtests/2026-10-13_decoupled_risk_spec.md).
+**Do not go below 0.30% funded** — at 0.15% a $75 budget cannot buy one MNQ contract (median stop is
+94 pts = $188), the account stops trading, and the median collapses to −$247.
+
+---
+
 ## Versions
 
 **[v5 — four corrections, and the number that actually matters](https://github.com/jadenmachado2009/nq-algo-strategy-lab/releases/tag/v5)** ← current
