@@ -3,9 +3,52 @@
 A testing pipeline for futures strategies on NQ/MNQ, built around one rule: **a strategy is assumed
 worthless until evidence says otherwise, and the evidence has to survive a test designed to fail it.**
 
-The lab has retired one strategy, failed to validate a second, rejected its own best search result
-three times, and — in v5 — found four errors in its own published numbers. Those are the results.
-The point of the pipeline is to produce them cheaply, before money is involved.
+---
+
+## ⛔ Current status: DO NOT FUND AN ACCOUNT
+
+**The forward test failed on 2026-10-13.** ORB is in the worst drawdown of its recorded history.
+
+| | |
+|---|---|
+| Seven-quarter baseline win rate | **65.7%** |
+| 2026Q3 | **48.6%** |
+| Last 150 trades (live tracker) | **50.7%** |
+| Last 50 trades | **40.0%** |
+
+A 0.5:1 bracket needs roughly **67%** to clear costs. At 48.6% the arithmetic is broken outright.
+
+This was confirmed on **two independent data sources** over the same 50 sessions — Yahoo's real
+`NQ=F` futures (−0.1232R) and the Dukascopy cash index (−0.1193R) — so it is the market regime, not
+a data artefact. A permutation test gives **p = 0.0001**: a genuine structural break, not a bad run.
+
+**What broke is follow-through, not the setup.** Opening ranges are entirely normal (0.55% width,
+3.92× ATR, both at their historical average). But median MFE — how far price travels in your favour
+before the trade resolves — fell from **0.52R to 0.43R**, below the 0.50R target. The median trade
+can no longer reach its own target. MAE deepened from −0.35 to −0.57.
+
+Full analysis: [`backtests/2026-10-13_FORWARD_TEST_orb.md`](backtests/2026-10-13_FORWARD_TEST_orb.md)
+
+### The tracker decides when to resume
+
+[`execution/orb_tracker.py`](execution/orb_tracker.py) runs daily on free real-futures data, needs no
+broker, and prints one verdict:
+
+| rolling 150-trade win rate | verdict |
+|---|---|
+| ≥ 65% | **HEALTHY** — the mechanism works, funding is justified |
+| 60–65% | MARGINAL — keep waiting |
+| **< 60%** | **IMPAIRED — do not fund** |
+
+Median MFE ≥ 0.50 confirms follow-through has returned. ~127 trades gives 80% power to tell recovery
+from noise, so roughly six weeks.
+
+```bash
+.venv/bin/python execution/orb_tracker.py
+```
+
+**Everything below describes what to run IF and WHEN the tracker reads HEALTHY. It is not a
+recommendation to trade today.**
 
 ---
 
