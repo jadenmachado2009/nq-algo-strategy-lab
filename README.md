@@ -5,34 +5,34 @@ worthless until evidence says otherwise, and the evidence has to survive a test 
 
 ---
 
-## ⛔ Current status: DO NOT FUND AN ACCOUNT
+## ⚠️ Current status: DO NOT FUND YET — recovering, not recovered
 
-**The forward test failed on 2026-10-13.** ORB is in the worst drawdown of its recorded history.
+**Updated 2026-11-10.** The forward test failed on 2026-10-13 and the strategy has since recovered
+most of the way back. It is not there yet.
 
 | | |
 |---|---|
-| Seven-quarter baseline win rate | **65.7%** |
-| 2026Q3 | **48.6%** |
-| Last 150 trades (live tracker) | **50.7%** |
-| Last 50 trades | **40.0%** |
+| Verdict | **MARGINAL** |
+| Win rate, last 150 trades | **62.7%** (need 65%) |
+| Median MFE | **0.516** ✓ (threshold 0.50) |
+| Expectancy, last 150 | **+0.0104R**, P(>0) = 54.9% |
+| Logged | 229 trades / 52 sessions, free data, no broker |
+| Decision point | ~43 more sessions — **mid-January 2027** |
 
-A 0.5:1 bracket needs roughly **67%** to clear costs. At 48.6% the arithmetic is broken outright.
+![where ORB stands](docs/figures/01-where-it-stands.svg)
 
-This was confirmed on **two independent data sources** over the same 50 sessions — Yahoo's real
-`NQ=F` futures (−0.1232R) and the Dukascopy cash index (−0.1193R) — so it is the market regime, not
-a data artefact. A permutation test gives **p = 0.0001**: a genuine structural break, not a bad run.
+**August was the break**, and it was real: 36.0% win rate, −0.308R, with a day-clustered interval
+that excludes zero. September ran 61.3%, October 65.4% — on the seven-year baseline — and November
+is 61.1% so far. Sep–Nov now **excludes the 48.6% break regime** (lower bound 49.4%), the first time
+any window has separated from it.
 
-**What broke is follow-through, not the setup.** Opening ranges are entirely normal (0.55% width,
-3.92× ATR, both at their historical average). But median MFE — how far price travels in your favour
-before the trade resolves — fell from **0.52R to 0.43R**, below the 0.50R target. The median trade
-can no longer reach its own target. MAE deepened from −0.35 to −0.57.
-
-Full analysis: [`backtests/2026-10-13_FORWARD_TEST_orb.md`](backtests/2026-10-13_FORWARD_TEST_orb.md)
+But expectancy has only just crossed zero, and the rolling window's own interval still runs
+**47.4% to 77.0%**. Nothing is established.
 
 ### The tracker decides when to resume
 
-[`execution/orb_tracker.py`](execution/orb_tracker.py) runs daily on free real-futures data, needs no
-broker, and prints one verdict:
+[`execution/orb_tracker.py`](execution/orb_tracker.py) runs every weekday on free real-futures data,
+needs no broker, and prints one verdict:
 
 | rolling 150-trade win rate | verdict |
 |---|---|
@@ -40,53 +40,73 @@ broker, and prints one verdict:
 | 60–65% | MARGINAL — keep waiting |
 | **< 60%** | **IMPAIRED — do not fund** |
 
-Median MFE ≥ 0.50 confirms follow-through has returned. ~127 trades gives 80% power to tell recovery
-from noise, so roughly six weeks.
-
 ```bash
 .venv/bin/python execution/orb_tracker.py
 ```
+
+**Known flaw in these bands.** They are **0.66× the standard error** of the thing they measure
+(7.53 points, day-clustered). The verdict has flipped 7 times in 80 trades. Crossings are noise;
+read the interval, not the label.
+
+**How long the wait really is.** An earlier draft said six weeks, converting 127 effective trades
+into 127 real ones. That is wrong: the five windows all read one price path, same-day trades agree
+in sign **79.8%** of the time, and the design effect is **3.34×**. 127 effective trades means ~425
+real trades ≈ **95 sessions**. We have 52.
 
 **Everything below describes what to run IF and WHEN the tracker reads HEALTHY. It is not a
 recommendation to trade today.**
 
 ---
 
-## The current spec
+## The evidence, in eight figures
 
-**ORB on NQ — 5 windows (10/20/30/45/60), long only, 0.5:1 bracket.**
-**Challenge at 1.25% risk. Funded account at 0.30%.** Five sequential attempts, stop after the first pass.
+Regenerate with `.venv/bin/python research/figures.py`.
 
 | | |
 |---|---|
-| Median days to pass | **5** |
-| P(≥1 pass in 5 attempts) | **92.9%** |
-| Total spend | **$111** |
-| **P(end in profit)** | **73.9%** |
-| **Median outcome** | **+$1,068** |
-| Mean outcome | +$1,419 |
-| p10 / p90 | −$245 / +$3,741 |
+| [The trailing floor](docs/figures/02-trailing-floor.svg) | `min(peak − $2,000, 0)` and the two phases it creates |
+| [The 40% wall](docs/figures/03-zero-edge-ceiling.svg) | every zero-edge configuration ever measured |
+| [Edge vs bet size](docs/figures/04-edge-vs-size.svg) | skill is worth +47pt small, +8pt large |
+| [The pooled-sweep trap](docs/figures/05-target-trap.svg) | monotone pooled, flat split |
+| [Monte Carlo](docs/figures/06-monte-carlo.svg) | pass rate against the one unmeasured input |
+| [The simulation drawn](docs/figures/07-simulation-paths.svg) | 6,000 accounts under two edge assumptions |
+| [Days against skill](docs/figures/08-tradeoff-frontier.svg) | the trade-off, with no third option |
 
-The two phases reward **opposite** things, and nothing forces them to use the same size. The
-challenge rewards speed — pass rate is scale-invariant, so betting larger costs nothing in
-probability while collapsing 29 days to 5. The funded account rewards survival — the drawdown locks
-at breakeven, so small size keeps you alive to collect repeated payouts (17.4% never pay at 0.30%
-against 60.2% at 1.25%).
-
-Every earlier analysis swept a single risk number across both phases and so never found this.
-
-| | 0.50% throughout | 1.25% throughout | **decoupled** |
-|---|---|---|---|
-| days to pass | 29 | 5 | **5** |
-| spend | $215 | $111 | **$111** |
-| P(profit) | 66.5% | 37.0% | **73.9%** |
-| median | +$836 | −$198 | **+$1,068** |
-
-Full derivation: [`backtests/2026-10-13_decoupled_risk_spec.md`](backtests/2026-10-13_decoupled_risk_spec.md).
-**Do not go below 0.30% funded** — at 0.15% a $75 budget cannot buy one MNQ contract (median stop is
-94 pts = $188), the account stops trading, and the median collapses to −$247.
+![the trade-off](docs/figures/08-tradeoff-frontier.svg)
 
 ---
+
+## The current spec
+
+**ORB on NQ — 5 windows (10/20/30/45/60), long only.** Two changes from the version v5 shipped,
+both found by auditing the code behind the numbers:
+
+| | was | **now** | why |
+|---|---|---|---|
+| Target | 0.50R | **0.75R** | beats 0.50R on mean *and* risk-adjusted return in both halves, and at every size tested |
+| Exit | held to 23:55 ET | **flat 16:00 ET** | 8.5% of entries were evening breakouts; edge unchanged without them |
+| Risk | 1.25% | **0.50% ($250/trade)** | at larger size variance, not skill, does the work |
+
+0.75R was selected independently by the October split test and by the days-against-skill frontier.
+Two unrelated criteria landing on the same parameter is the strongest robustness signal in this repo.
+
+| | |
+|---|---|
+| Pass rate | **55.7%** |
+| Median days to pass | **32** |
+| Expected days to a funded account | **27** |
+| Payout if funded | median **$1,625**, mean $2,065 |
+| Never paid at all | **19.1%** |
+| **EV per attempt** | **+$969** |
+| Weighted by P(edge is real) = 54.9% | **~+$532** |
+
+**Do not size up to go faster.** At $500/trade a trader with no edge whatsoever passes 52.5% of the
+time. At $250 a coin flip gets 33%, so the edge is carrying +15 points of the result.
+
+**Do not interpolate the bet size.** The response surface is stepped: fixed-dollar rules ($3,000
+target, $2,000 MLL, $1,000 DLL) against a fixed-dollar bet produce a reproducible hole at **$320**
+where skill contribution collapses to +3pt, against +12pt at $290 and +10pt at $360. It appears in
+all three target curves, survived 4 seeds and 120,000 paths. Test the exact size you intend to trade.
 
 ## Versions
 
